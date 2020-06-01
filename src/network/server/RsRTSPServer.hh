@@ -63,7 +63,8 @@ public:
         void emptyStreamProfileQueue(long long int t_profile_key);
 
     private:
-        std::unordered_map<long long int, rs2::frame_queue> m_streamProfiles;
+        std::unordered_map<long long int, rs2::frame_queue> m_streamQueues;
+        rs2::syncer m_sync;
     };
 
 protected:

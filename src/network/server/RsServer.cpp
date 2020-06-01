@@ -42,6 +42,7 @@ server::server(rs2::device dev, std::string addr, int port)
     for (auto sensor : sensors)
     {
         RsServerMediaSession* sms;
+        *env << "Creating session for sensor '" << sensor.getSensorName().c_str();
         if (sensor.getSensorName().compare(STEREO_SENSOR_NAME) == 0 || sensor.getSensorName().compare(RGB_SENSOR_NAME) == 0)
         {
             sms = RsServerMediaSession::createNew(*env, sensor, sensor.getSensorName().data(), "", "Session streamed by \"realsense streamer\"", False);
@@ -54,6 +55,13 @@ server::server(rs2::device dev, std::string addr, int port)
         for (auto stream_profile : sensor.getStreamProfiles())
         {
             rs2::video_stream_profile stream = stream_profile.second;
+
+            *env << "\nStream '" << stream.stream_name().c_str() << "' (" 
+                << stream.format() << ") "
+                << stream.width() << " X "
+                << stream.height() << " X "
+                << stream.fps();
+
             if (stream.format() == RS2_FORMAT_BGR8 || stream.format() == RS2_FORMAT_RGB8 || stream.format() == RS2_FORMAT_Z16 || stream.format() == RS2_FORMAT_Y8 || stream.format() == RS2_FORMAT_YUYV || stream.format() == RS2_FORMAT_UYVY)
             {
                 if (stream.fps() == 6)
@@ -85,10 +93,12 @@ server::server(rs2::device dev, std::string addr, int port)
                     }
                 }
             }
-            *env << "Ignoring stream: format: " << stream.format() << " width: " << stream.width() << " height: " << stream.height() << " fps: " << stream.fps() << "\n";
+            // *env << "Ignoring stream: format: " << stream.format() << " width: " << stream.width() << " height: " << stream.height() << " fps: " << stream.fps() << "\n";
+            *env << " - ignored";
         }
+        *env << "\n";
 
-        calculate_extrinsics();
+        ///calculate_extrinsics();
 
         rtspServer->addServerMediaSession(sms);
         char* url = rtspServer->rtspURL(sms);

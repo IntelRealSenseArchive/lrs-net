@@ -73,7 +73,9 @@ RsRTSPServer::RsRTSPClientConnection::~RsRTSPClientConnection() {}
 void RsRTSPServer::RsRTSPClientConnection::handleCmd_DESCRIBE(char const* urlPreSuffix, char const* urlSuffix, char const* fullRequestStr) {
     fOurRTSPServer.closeAllClientSessionsForServerMediaSession(STEREO_SENSOR_NAME.c_str());
     fOurRTSPServer.closeAllClientSessionsForServerMediaSession(RGB_SENSOR_NAME.c_str());
-    
+
+    envir() << "DESCRIBE\t:\t'" << urlPreSuffix << "/" << urlSuffix << "'\n";
+
     RTSPServer::RTSPClientConnection::handleCmd_DESCRIBE(urlPreSuffix, urlSuffix, fullRequestStr);
 }
 
@@ -99,7 +101,7 @@ void RsRTSPServer::RsRTSPClientConnection::handleCmd_GET_PARAMETER(char const* t
                 float value = sensor.getRsSensor().get_option((rs2_option)stoi(std::string(option)));
                 char* paramString = new char[strlen(sensorName) + 1 + strlen(option) + strlen(std::to_string(value).c_str()) + 10];
                 sprintf(paramString, "%s_%s: %s\r\n", sensorName, option, std::to_string(value).c_str());
-                envir() << "GET_PARAMETER: sensor '" << sensorName << "', option '" << option << "', value " << value << "\n";
+                envir() << "GET_PARAM\t:\tsensor '" << sensorName << "', option '" << option << "', value " << value << "\n";
                 setRTSPResponse("200 OK", paramString);
                 return;
             }
@@ -128,7 +130,7 @@ void RsRTSPServer::RsRTSPClientConnection::handleCmd_SET_PARAMETER(char const* t
     char* option = strtok(NULL, "\r\n:");
     char* value = strtok(NULL, "\r\n:");
 
-    envir() << "SET_PARAMETER: sensor '" << sensorName << "', option '" << option << "', value " << value << "\n";
+    envir() << "SET_PARAM\t:\tsensor '" << sensorName << "', option '" << option << "', value " << value << "\n";
     sensors = m_fOurRsRTSPServer.m_device.get()->getSensors();
     for(auto sensor : sensors)
     {
@@ -170,7 +172,8 @@ RsRTSPServer::RsRTSPClientSession::~RsRTSPClientSession() {
 
 void RsRTSPServer::RsRTSPClientSession::handleCmd_TEARDOWN(RTSPClientConnection* t_ourClientConnection, ServerMediaSubsession* t_subsession)
 {
-    envir() << "TEARDOWN \n";
+    envir() << "TEARDOWN\t:\t[" << (void*)t_ourClientConnection << "]\t(" << (void*)t_subsession << ")\n";
+
     try
     {
         closeRsCamera();
@@ -187,7 +190,8 @@ void RsRTSPServer::RsRTSPClientSession::handleCmd_TEARDOWN(RTSPClientConnection*
 
 void RsRTSPServer::RsRTSPClientSession::handleCmd_PLAY(RTSPClientConnection* t_ourClientConnection, ServerMediaSubsession* t_subsession, char const* t_fullRequestStr)
 {
-    envir() << "PLAY \n";
+    envir() << "PLAY\t:\t[" << (void*)t_ourClientConnection << "]\t(" << (void*)t_subsession << ")\n";
+
     try
     {
         openRsCamera();
@@ -204,7 +208,8 @@ void RsRTSPServer::RsRTSPClientSession::handleCmd_PLAY(RTSPClientConnection* t_o
 
 void RsRTSPServer::RsRTSPClientSession::handleCmd_PAUSE(RTSPClientConnection* t_ourClientConnection, ServerMediaSubsession* t_subsession)
 {
-    envir() << "PAUSE \n";
+    envir() << "PAUSE\t:\t[" << (void*)t_ourClientConnection << "]\t(" << (void*)t_subsession << ")\n";
+
     RTSPServer::RTSPClientSession::handleCmd_PAUSE(t_ourClientConnection, t_subsession);
     try
     {
@@ -225,14 +230,16 @@ void RsRTSPServer::RsRTSPClientSession::handleCmd_GET_PARAMETER(RTSPClientConnec
     std::string ContentLength("Content-Length:");
     std::string afterSplit; //, opt, val;
 
-    envir() << "GET_PARAMETER\n";
+    envir() << "GET_PARAMETER\t:\t[" << (void*)t_ourClientConnection << "]\t(" << (void*)t_subsession << ")\n";
+
     afterSplit = str.substr(str.find(ContentLength) + ContentLength.size());
     char* contLength = strtok((char*)afterSplit.c_str(), "\r\n: ");
     char* sensorName = strtok(NULL, "_\r\n:");
     char* option = strtok(NULL, "\r\n:");
     try
     {
-        float value = static_cast<RsServerMediaSession*>(fOurServerMediaSession)->getRsSensor().getRsSensor().get_option((rs2_option)stoi(std::string(option)));
+        RsServerMediaSession * rs_session = static_cast<RsServerMediaSession*>(fOurServerMediaSession);
+        float value = rs_session->getRsSensor().getRsSensor().get_option((rs2_option)stoi(std::string(option)));
         char* paramString = new char[strlen(sensorName) + 1 + strlen(option) + strlen(std::to_string(value).c_str()) + 10];
         sprintf(paramString, "%s_%s: %s\r\n", sensorName, option, std::to_string(value).c_str());
         setRTSPResponse(t_ourClientConnection, "200 OK", paramString);
@@ -253,7 +260,8 @@ void RsRTSPServer::RsRTSPClientSession::handleCmd_SET_PARAMETER(RTSPClientConnec
     std::string ContentLength("Content-Length:");
     std::string afterSplit; //, opt, val;
 
-    envir() << "SET_PARAMETER \n";
+    envir() << "SET_PARAMETER\t:\t[" << (void*)t_ourClientConnection << "]\t(" << (void*)t_subsession << ")\n";
+
     afterSplit = str.substr(str.find(ContentLength) + ContentLength.size());
     char* contLength = strtok((char*)afterSplit.c_str(), "\r\n: ");
     char* sensorName = strtok(NULL, "_\r\n:");
@@ -262,7 +270,8 @@ void RsRTSPServer::RsRTSPClientSession::handleCmd_SET_PARAMETER(RTSPClientConnec
 
     try
     {
-        static_cast<RsServerMediaSession*>(fOurServerMediaSession)->getRsSensor().getRsSensor().set_option((rs2_option)stoi(std::string(option)), stof(std::string(value)));
+        RsServerMediaSession * rs_session = static_cast<RsServerMediaSession*>(fOurServerMediaSession);
+        rs_session->getRsSensor().getRsSensor().set_option((rs2_option)stoi(std::string(option)), stof(std::string(value)));
         setRTSPResponse(t_ourClientConnection, "200 OK");
     }
     catch(const std::exception& e)
@@ -274,19 +283,24 @@ void RsRTSPServer::RsRTSPClientSession::handleCmd_SET_PARAMETER(RTSPClientConnec
 }
 void RsRTSPServer::RsRTSPClientSession::handleCmd_SETUP(RTSPServer::RTSPClientConnection* t_ourClientConnection, char const* t_urlPreSuffix, char const* t_urlSuffix, char const* t_fullRequestStr)
 {
+    envir() << "SETUP\t:\t[" << (void*)t_ourClientConnection << "]\t'" << t_urlPreSuffix << "/" << t_urlSuffix << "'\n";
+
     RTSPServer::RTSPClientSession::handleCmd_SETUP(t_ourClientConnection, t_urlPreSuffix, t_urlSuffix, t_fullRequestStr);
     ServerMediaSubsession* subsession;
-    if(t_urlSuffix[0] != '\0' && strcmp(fOurServerMediaSession->streamName(), t_urlPreSuffix) == 0)
+    if (t_urlSuffix[0] != '\0' && strcmp(fOurServerMediaSession->streamName(), t_urlPreSuffix) == 0)
     {
         // Non-aggregated operation.
         // Look up the media subsession whose track id is "urlSuffix":
         ServerMediaSubsessionIterator iter(*fOurServerMediaSession);
-        while((subsession = iter.next()) != NULL)
+        while ((subsession = iter.next()) != NULL)
         {
-            if(strcmp(subsession->trackId(), t_urlSuffix) == 0)
+            if (strcmp(subsession->trackId(), t_urlSuffix) == 0)
             {
-                long long int profileKey = static_cast<RsServerMediaSession*>(fOurServerMediaSession)->getRsSensor().getStreamProfileKey(((RsServerMediaSubsession*)(subsession))->getStreamProfile());
-                m_streamProfiles[profileKey] = ((RsServerMediaSubsession*)(subsession))->getFrameQueue();
+                RsServerMediaSession * rs_session = static_cast<RsServerMediaSession*>(fOurServerMediaSession);
+                RsServerMediaSubsession * rs_subsession = (RsServerMediaSubsession*)subsession;
+                long long int profileKey =
+                    rs_session->getRsSensor().getStreamProfileKey(rs_subsession->getStreamProfile());
+                m_streamQueues[profileKey] = rs_subsession->getFrameQueue();
                 break; // success
             }
         }
@@ -295,17 +309,20 @@ void RsRTSPServer::RsRTSPClientSession::handleCmd_SETUP(RTSPServer::RTSPClientCo
 
 void RsRTSPServer::RsRTSPClientSession::openRsCamera()
 {
-    static_cast<RsServerMediaSession*>(fOurServerMediaSession)->openRsCamera(m_streamProfiles);
+    RsServerMediaSession * rs_session = static_cast<RsServerMediaSession*>(fOurServerMediaSession);
+    rs_session->openRsCamera(m_streamQueues);
 }
 
 void RsRTSPServer::RsRTSPClientSession::closeRsCamera()
 {
-    ((RsServerMediaSession*)fOurServerMediaSession)->closeRsCamera();
+    RsServerMediaSession * rs_session = static_cast<RsServerMediaSession*>(fOurServerMediaSession);
+    rs_session->closeRsCamera();
     for(int i = 0; i < fNumStreamStates; ++i)
     {
         if(fStreamStates[i].subsession != NULL)
         {
-            long long int profile_key = static_cast<RsServerMediaSession*>(fOurServerMediaSession)->getRsSensor().getStreamProfileKey(((RsServerMediaSubsession*)(fStreamStates[i].subsession))->getStreamProfile());
+            RsServerMediaSubsession * rs_subsession = (RsServerMediaSubsession*)fStreamStates[i].subsession;
+            long long int profile_key = rs_session->getRsSensor().getStreamProfileKey(rs_subsession->getStreamProfile());
             emptyStreamProfileQueue(profile_key);
         }
     }
@@ -314,9 +331,9 @@ void RsRTSPServer::RsRTSPClientSession::closeRsCamera()
 void RsRTSPServer::RsRTSPClientSession::emptyStreamProfileQueue(long long int profile_key)
 {
     rs2::frame f;
-    if(m_streamProfiles.find(profile_key) != m_streamProfiles.end())
+    if(m_streamQueues.find(profile_key) != m_streamQueues.end())
     {
-        while(m_streamProfiles[profile_key].poll_for_frame(&f))
+        while(m_streamQueues[profile_key].poll_for_frame(&f))
             ;
     }
 }

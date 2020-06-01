@@ -468,9 +468,11 @@ void RsRTSPClient::continueAfterDESCRIBE(RTSPClient *rtspClient, int resultCode,
                 videoStream.intrinsics.coeffs[i] = subsession->attrVal_int("coeff_" + i);
             }
 
+#if 0
             // extrinsics
             std::string extrinsics = subsession->attrVal_str("extrinsics");
             updateExtrinsicsMap(videoStream, extrinsics);
+#endif
 
             DeviceData deviceData;
             deviceData.serialNum = strSerialNumVal;

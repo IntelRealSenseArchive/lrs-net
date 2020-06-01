@@ -31,9 +31,8 @@ int RsSensor::open(std::unordered_map<long long int, rs2::frame_queue>& t_stream
     std::vector<rs2::stream_profile> requestedStreamProfiles;
     for(auto streamProfile : t_streamProfilesQueues)
     {
-        //make a vector of all requested stream profiles
-        long long int streamProfileKey = streamProfile.first;
-        requestedStreamProfiles.push_back(m_streamProfiles.at(streamProfileKey));
+        requestedStreamProfiles.push_back(m_streamProfiles.at(streamProfile.first));
+#if 0
         if(CompressionFactory::isCompressionSupported(m_streamProfiles.at(streamProfileKey).format(), m_streamProfiles.at(streamProfileKey).stream_type()))
         {
             rs2::video_stream_profile vsp = m_streamProfiles.at(streamProfileKey);
@@ -47,6 +46,7 @@ int RsSensor::open(std::unordered_map<long long int, rs2::frame_queue>& t_stream
         {
             *env << "unsupported compression format or compression is disabled, continue without compression\n";
         }
+#endif
     }
     m_sensor.open(requestedStreamProfiles);
     return EXIT_SUCCESS;
@@ -67,6 +67,9 @@ int RsSensor::stop()
 int RsSensor::start(std::unordered_map<long long int, rs2::frame_queue>& t_streamProfilesQueues)
 {
     auto callback = [&](const rs2::frame& frame) {
+        uint8_t * frame_data = (uint8_t*)frame.get_data();
+        uint8_t   frame_size = frame.get_data_size();
+
         long long int profileKey = getStreamProfileKey(frame.get_profile());
         //check if profile exists in map:
         if(t_streamProfilesQueues.find(profileKey) != t_streamProfilesQueues.end())
