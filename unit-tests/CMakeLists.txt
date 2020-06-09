@@ -6,7 +6,7 @@ project(RealsenseUnitTests)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-set(DEPENDENCIES realsense2)
+set(DEPENDENCIES realsense2 realsense2-net)
 
 find_package (Python3 COMPONENTS Interpreter Development)
 if(Python3_FOUND)
@@ -24,6 +24,7 @@ endif()
 
 set (unit_tests_sources
     unit-tests-live.cpp
+    unit-tests-net.cpp
     unit-tests-post-processing.cpp
     unit-tests-post-processing.h
     unit-tests-main.cpp
