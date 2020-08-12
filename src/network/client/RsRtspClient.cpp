@@ -266,10 +266,10 @@ void RsRTSPClient::setGetParamResponse(float t_res)
     m_getParamRes = t_res;
 }
 
-int RsRTSPClient::getOption(const std::string &t_sensorName, rs2_option t_option, float &t_value)
+float RsRTSPClient::getOption(const std::string &t_sensorName, rs2_option t_option)
 {
     unsigned res;
-    t_value = m_getParamRes = -1;
+    m_getParamRes = -1;
     std::string option = t_sensorName + "_" + std::to_string(t_option);
     if (isActiveSession)
     {
@@ -294,9 +294,7 @@ int RsRTSPClient::getOption(const std::string &t_sensorName, rs2_option t_option
         throw std::runtime_error(format_error_msg(__FUNCTION__, m_lastReturnValue));
     }
 
-    t_value = m_getParamRes;
-
-    return m_lastReturnValue.exit_code;
+    return m_getParamRes;
 }
 
 void schedulerThread(RsRTSPClient *t_rtspClientInstance)
@@ -597,6 +595,11 @@ void RsRTSPClient::continueAfterOPTIONS(RTSPClient *rtspClient, int resultCode, 
         resultStr = resultString;
         delete[] resultString;
     }
+
+    std::ofstream fuflog("c:\\temp\\rsnet.log", std::ios::out | std::ios::app | std::ios::binary);
+    fuflog << "continueAfterOPTIONS: " << resultStr << "\n";
+    fuflog.close();
+
     UsageEnvironment &env = rtspClient->envir();                           // alias
     RsRTSPClient *rsRtspClient = dynamic_cast<RsRTSPClient *>(rtspClient); // alias
     env << "continueAfterOPTIONS " << resultCode << " " << resultStr.c_str() << "\n";
