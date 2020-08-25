@@ -42,18 +42,32 @@ server::server(rs2::device dev, std::string addr, int port)
     for (auto sensor : sensors)
     {
         RsServerMediaSession* sms;
-        if (sensor.getSensorName().compare(STEREO_SENSOR_NAME) == 0 || sensor.getSensorName().compare(RGB_SENSOR_NAME) == 0)
+        if (sensor.getSensorName().compare(STEREO_SENSOR_NAME) == 0 || 
+            sensor.getSensorName().compare(RGB_SENSOR_NAME) == 0    ||
+            sensor.getSensorName().compare(L500_SENSOR_NAME) == 0    )
         {
-            sms = RsServerMediaSession::createNew(*env, sensor, sensor.getSensorName().data(), "", "Session streamed by \"realsense streamer\"", False);
+            if (sensor.getSensorName().compare(STEREO_SENSOR_NAME) == 0 || sensor.getSensorName().compare(L500_SENSOR_NAME) == 0) {
+                sms = RsServerMediaSession::createNew(*env, sensor, STEREO_SENSOR_NAME.c_str(), "", "Session streamed by \"realsense streamer\"", False);
+            } else {
+                sms = RsServerMediaSession::createNew(*env, sensor, RGB_SENSOR_NAME.c_str(), "", "Session streamed by \"realsense streamer\"", False);
+            }
+            *env << "Sensor " << sensor.getSensorName().c_str() << " connected\n";
         }
         else
         {
+            *env << "Sensor " << sensor.getSensorName().c_str() << " ignored\n";
             break;
         }
 
         for (auto stream_profile : sensor.getStreamProfiles())
         {
             rs2::video_stream_profile stream = stream_profile.second;
+            *env << "  Stream " << rs2_format_to_string(stream.format()) << ",\t" << stream.width() << "x" << stream.height() << ",\t" << stream.fps() << " fps";
+            sms->addSubsession(RsServerMediaSubsession::createNew(*env, stream, rsDevice));
+
+            supported_stream_profiles.push_back(stream);
+            *env << " accepted\n";
+#if 0
             if (stream.format() == RS2_FORMAT_BGR8 || stream.format() == RS2_FORMAT_RGB8 || stream.format() == RS2_FORMAT_Z16 || stream.format() == RS2_FORMAT_Y8 || stream.format() == RS2_FORMAT_YUYV || stream.format() == RS2_FORMAT_UYVY)
             {
                 if (stream.fps() == 6)
@@ -63,6 +77,7 @@ server::server(rs2::device dev, std::string addr, int port)
                         sms->addSubsession(RsServerMediaSubsession::createNew(*env, stream, rsDevice));
 
                         supported_stream_profiles.push_back(stream);
+                        *env << " accepted\n";
                         continue;
                     }
                 }
@@ -72,6 +87,7 @@ server::server(rs2::device dev, std::string addr, int port)
                     {
                         sms->addSubsession(RsServerMediaSubsession::createNew(*env, stream, rsDevice));
                         supported_stream_profiles.push_back(stream);
+                        *env << " accepted\n";
                         continue;
                     }
                 }
@@ -81,11 +97,13 @@ server::server(rs2::device dev, std::string addr, int port)
                     {
                         sms->addSubsession(RsServerMediaSubsession::createNew(*env, stream, rsDevice));
                         supported_stream_profiles.push_back(stream);
+                        *env << " accepted\n";
                         continue;
                     }
                 }
             }
-            *env << "Ignoring stream: format: " << stream.format() << " width: " << stream.width() << " height: " << stream.height() << " fps: " << stream.fps() << "\n";
+            *env << " ignored\n";
+#endif            
         }
 
         calculate_extrinsics();

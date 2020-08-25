@@ -100,6 +100,7 @@ std::string getSdpLineForVideoStream(rs2::video_stream_profile& t_videoStream, s
     str.append(getSdpLineForField("usb_type", device.get()->getDevice().get_info(RS2_CAMERA_INFO_USB_TYPE_DESCRIPTOR)));
     str.append(getSdpLineForField("compression", CompressionFactory::getIsEnabled()));
 
+try {
     str.append(getSdpLineForField("ppx", t_videoStream.get_intrinsics().ppx));
     str.append(getSdpLineForField("ppy", t_videoStream.get_intrinsics().ppy));
     str.append(getSdpLineForField("fx", t_videoStream.get_intrinsics().fx));
@@ -110,6 +111,9 @@ std::string getSdpLineForVideoStream(rs2::video_stream_profile& t_videoStream, s
     {
         str.append(getSdpLineForField("coeff_" + i, t_videoStream.get_intrinsics().coeffs[i]));
     }
+} catch (...) {
+
+}
 
     str.append(getSdpLineForField("extrinsics", get_extrinsics_string_per_stream(device, t_videoStream).c_str()));
 
