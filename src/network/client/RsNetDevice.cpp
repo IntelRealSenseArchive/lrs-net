@@ -153,7 +153,7 @@ bool rs_net_device::init_device_data(rs2::software_device sw_device)
 
             // Workaround: real cameras report incorrect paramethers.
             if (control.range.def > control.range.max) control.range.def = control.range.max;
-            if (control.range.def < control.range.max) control.range.def = control.range.min;
+            if (control.range.def < control.range.min) control.range.def = control.range.min;
 
             // Workaround: real cameras depth units fails option check.
             if (control.option == RS2_OPTION_DEPTH_UNITS)

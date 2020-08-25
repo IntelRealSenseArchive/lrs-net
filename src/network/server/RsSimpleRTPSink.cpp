@@ -21,7 +21,11 @@ RsSimpleRTPSink* RsSimpleRTPSink::createNew(UsageEnvironment& t_env,
                                             Boolean t_allowMultipleFramesPerPacket,
                                             Boolean t_doNormalMBitRule)
 {
-    CompressionFactory::getIsEnabled() = IS_COMPRESSION_ENABLED;
+    if (IS_COMPRESSION_ENABLED) {
+        CompressionFactory::enable();
+    } else {
+        CompressionFactory::disable();
+    }
     return new RsSimpleRTPSink(t_env, t_RTPgs, t_rtpPayloadFormat, t_rtpTimestampFrequency, t_sdpMediaTypeString, t_rtpPayloadFormatName, t_videoStream, device, t_numChannels, t_allowMultipleFramesPerPacket, t_doNormalMBitRule);
 }
 
@@ -98,7 +102,7 @@ std::string getSdpLineForVideoStream(rs2::video_stream_profile& t_videoStream, s
     str.append(getSdpLineForField("bpp", RsSensor::getStreamProfileBpp(t_videoStream.format())));
     str.append(getSdpLineForField("cam_serial_num", device.get()->getDevice().get_info(RS2_CAMERA_INFO_SERIAL_NUMBER)));
     str.append(getSdpLineForField("usb_type", device.get()->getDevice().get_info(RS2_CAMERA_INFO_USB_TYPE_DESCRIPTOR)));
-    str.append(getSdpLineForField("compression", CompressionFactory::getIsEnabled()));
+    str.append(getSdpLineForField("compression", CompressionFactory::isEnabled()));
 
     str.append(getSdpLineForField("ppx", t_videoStream.get_intrinsics().ppx));
     str.append(getSdpLineForField("ppy", t_videoStream.get_intrinsics().ppy));

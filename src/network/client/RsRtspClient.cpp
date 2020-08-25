@@ -458,7 +458,12 @@ void RsRTSPClient::continueAfterDESCRIBE(RTSPClient *rtspClient, int resultCode,
             videoStream.intrinsics.ppy = subsession->attrVal_int("ppy");
             videoStream.intrinsics.fx = subsession->attrVal_int("fx");
             videoStream.intrinsics.fy = subsession->attrVal_int("fy");
-            CompressionFactory::getIsEnabled() = subsession->attrVal_bool("compression");
+            if (subsession->attrVal_bool("compression")) {
+                CompressionFactory::enable();
+            }
+            else {
+                CompressionFactory::disable();
+            }
             videoStream.intrinsics.model = (rs2_distortion)subsession->attrVal_int("model");
 
             for (size_t i = 0; i < 5; i++)

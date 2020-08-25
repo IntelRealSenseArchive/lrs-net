@@ -30,7 +30,7 @@ RsSink::RsSink(UsageEnvironment& t_env, MediaSubsession& t_subsession, rs2_video
     m_afterGettingFunctions.push_back(afterGettingFrameUid2);
     m_afterGettingFunctions.push_back(afterGettingFrameUid3);
 
-    if(CompressionFactory::isCompressionSupported(m_stream.fmt, m_stream.type))
+    if(CompressionFactory::isSupported(m_stream.fmt, m_stream.type))
     {
         m_iCompress = CompressionFactory::getObject(m_stream.width, m_stream.height, m_stream.fmt, m_stream.type, m_stream.bpp);
     }
@@ -87,7 +87,7 @@ void RsSink::afterGettingFrame(unsigned t_frameSize, unsigned t_numTruncatedByte
     {
         if(this->m_rtpCallback != NULL)
         {
-            if(CompressionFactory::isCompressionSupported(m_stream.fmt, m_stream.type) && m_iCompress != nullptr)
+            if(CompressionFactory::isSupported(m_stream.fmt, m_stream.type) && m_iCompress != nullptr)
             {
                 m_to = new unsigned char[MAX_MESSAGE_SIZE];
                 if(m_to == nullptr)

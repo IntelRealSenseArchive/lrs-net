@@ -87,7 +87,7 @@ void RsDeviceSource::deliverRSFrame(rs2::frame* t_frame)
     gettimeofday(&fPresentationTime, NULL); // If you have a more accurate time - e.g., from an encoder - then use that instead.
     RsFrameHeader header;
     unsigned char* data;
-    if(CompressionFactory::isCompressionSupported(t_frame->get_profile().format(), t_frame->get_profile().stream_type()))
+    if(CompressionFactory::isSupported(t_frame->get_profile().format(), t_frame->get_profile().stream_type()))
     {
         fFrameSize = ((int*)t_frame->get_data())[0];
         data = (unsigned char*)t_frame->get_data() + sizeof(int);

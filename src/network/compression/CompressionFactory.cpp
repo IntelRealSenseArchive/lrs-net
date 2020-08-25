@@ -8,7 +8,7 @@
 
 std::shared_ptr<ICompression> CompressionFactory::getObject(int t_width, int t_height, rs2_format t_format, rs2_stream t_streamType, int t_bpp)
 {
-    ZipMethod zipMeth;
+    ZipMethod zipMeth = ZipMethod::lz;
     if(t_streamType == RS2_STREAM_COLOR || t_streamType == RS2_STREAM_INFRARED)
     {
         zipMeth = ZipMethod::jpeg;
@@ -17,7 +17,7 @@ std::shared_ptr<ICompression> CompressionFactory::getObject(int t_width, int t_h
     {
         zipMeth = ZipMethod::lz;
     }
-    if(!isCompressionSupported(t_format, t_streamType))
+    if(!isSupported(t_format, t_streamType))
     {
         return nullptr;
     }
@@ -39,20 +39,39 @@ std::shared_ptr<ICompression> CompressionFactory::getObject(int t_width, int t_h
     }
 }
 
-bool& CompressionFactory::getIsEnabled()
+bool CompressionFactory::isEnabled()
 {
-    static bool m_isEnabled = true;
-    return m_isEnabled;
+    return set_mode(true, true);
 }
 
-bool CompressionFactory::isCompressionSupported(rs2_format t_format, rs2_stream t_streamType)
+bool CompressionFactory::set_mode(bool mode, bool read = false)
 {
-    if(getIsEnabled() == 0)
+    static bool m_enabled = true;
+
+    if (!read) m_enabled = mode;
+
+    return m_enabled;
+}
+
+void CompressionFactory::enable()
+{
+    set_mode(true);
+}
+
+void CompressionFactory::disable()
+{
+    set_mode(false);
+}
+
+bool CompressionFactory::isSupported(rs2_format t_format, rs2_stream t_streamType)
+{
+    if (isEnabled() == false)
     {
         return false;
     }
 
-    if((t_streamType == RS2_STREAM_COLOR || t_streamType == RS2_STREAM_INFRARED) && (t_format != RS2_FORMAT_BGR8 && t_format != RS2_FORMAT_RGB8 && t_format != RS2_FORMAT_Y8 && t_format != RS2_FORMAT_YUYV && t_format != RS2_FORMAT_UYVY))
+    if ((t_streamType == RS2_STREAM_COLOR || t_streamType == RS2_STREAM_INFRARED) && 
+        (t_format != RS2_FORMAT_BGR8 && t_format != RS2_FORMAT_RGB8 && t_format != RS2_FORMAT_Y8 && t_format != RS2_FORMAT_YUYV && t_format != RS2_FORMAT_UYVY))
     {
         return false;
     }

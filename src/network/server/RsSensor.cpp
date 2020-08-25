@@ -34,7 +34,7 @@ int RsSensor::open(std::unordered_map<long long int, rs2::frame_queue>& t_stream
         //make a vector of all requested stream profiles
         long long int streamProfileKey = streamProfile.first;
         requestedStreamProfiles.push_back(m_streamProfiles.at(streamProfileKey));
-        if(CompressionFactory::isCompressionSupported(m_streamProfiles.at(streamProfileKey).format(), m_streamProfiles.at(streamProfileKey).stream_type()))
+        if(CompressionFactory::isSupported(m_streamProfiles.at(streamProfileKey).format(), m_streamProfiles.at(streamProfileKey).stream_type()))
         {
             rs2::video_stream_profile vsp = m_streamProfiles.at(streamProfileKey);
             std::shared_ptr<ICompression> compressPtr = CompressionFactory::getObject(vsp.width(), vsp.height(), vsp.format(), vsp.stream_type(), RsSensor::getStreamProfileBpp(vsp.format()));
@@ -73,7 +73,7 @@ int RsSensor::start(std::unordered_map<long long int, rs2::frame_queue>& t_strea
         {
             std::chrono::high_resolution_clock::time_point curSample = std::chrono::high_resolution_clock::now();
             std::chrono::duration<double> timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(curSample - m_prevSample[profileKey]);
-            if(CompressionFactory::isCompressionSupported(frame.get_profile().format(), frame.get_profile().stream_type()))
+            if(CompressionFactory::isSupported(frame.get_profile().format(), frame.get_profile().stream_type()))
             {
                 unsigned char* buff = new unsigned char[MAX_MESSAGE_SIZE];
                 int frameSize = m_iCompress.at(profileKey)->compressBuffer((unsigned char*)frame.get_data(), frame.get_data_size(), buff);
