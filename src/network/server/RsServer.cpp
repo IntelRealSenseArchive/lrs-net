@@ -99,6 +99,15 @@ server::server(rs2::device dev, std::string addr, int port)
 
         delete[] url;
     }
+
+    if (IS_COMPRESSION_ENABLED) {
+        CompressionFactory::enable();
+        *env << "Compression enabled\n";
+    }
+    else {
+        CompressionFactory::disable();
+        *env << "Compression disabled\n";
+    }
 }
 
 void server::start()

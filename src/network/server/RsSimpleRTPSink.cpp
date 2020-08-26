@@ -21,11 +21,6 @@ RsSimpleRTPSink* RsSimpleRTPSink::createNew(UsageEnvironment& t_env,
                                             Boolean t_allowMultipleFramesPerPacket,
                                             Boolean t_doNormalMBitRule)
 {
-    if (IS_COMPRESSION_ENABLED) {
-        CompressionFactory::enable();
-    } else {
-        CompressionFactory::disable();
-    }
     return new RsSimpleRTPSink(t_env, t_RTPgs, t_rtpPayloadFormat, t_rtpTimestampFrequency, t_sdpMediaTypeString, t_rtpPayloadFormatName, t_videoStream, device, t_numChannels, t_allowMultipleFramesPerPacket, t_doNormalMBitRule);
 }
 
