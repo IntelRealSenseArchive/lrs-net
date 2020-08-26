@@ -30,6 +30,7 @@ RsSink::RsSink(UsageEnvironment& t_env, MediaSubsession& t_subsession, rs2_video
     m_afterGettingFunctions.push_back(afterGettingFrameUid2);
     m_afterGettingFunctions.push_back(afterGettingFrameUid3);
 
+#if 0 // should be checked when connecting corresponding filter
     if(CompressionFactory::isSupported(m_stream.fmt, m_stream.type))
     {
         m_iCompress = CompressionFactory::getObject(m_stream.width, m_stream.height, m_stream.fmt, m_stream.type, m_stream.bpp);
@@ -38,6 +39,7 @@ RsSink::RsSink(UsageEnvironment& t_env, MediaSubsession& t_subsession, rs2_video
     {
         LOG_DEBUG("Compression is disabled or configured unsupported format to zip, run without compression");
     }
+#endif
 }
 
 RsSink::~RsSink()
@@ -87,6 +89,7 @@ void RsSink::afterGettingFrame(unsigned t_frameSize, unsigned t_numTruncatedByte
     {
         if(this->m_rtpCallback != NULL)
         {
+#if 0 // should be checked when connecting corresponding filter
             if(CompressionFactory::isSupported(m_stream.fmt, m_stream.type) && m_iCompress != nullptr)
             {
                 m_to = new unsigned char[MAX_MESSAGE_SIZE];
@@ -104,6 +107,7 @@ void RsSink::afterGettingFrame(unsigned t_frameSize, unsigned t_numTruncatedByte
                 delete [] m_receiveBuffer;
             }
             else
+#endif
             {
                 this->m_rtpCallback->on_frame(m_receiveBuffer + sizeof(RsNetworkHeader), header->data.frameSize, t_presentationTime);
             }

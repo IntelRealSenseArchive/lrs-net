@@ -105,7 +105,7 @@ std::string getSdpLineForVideoStream(rs2::video_stream_profile& t_videoStream, s
     str.append(getSdpLineForField("fy", t_videoStream.get_intrinsics().fy));
     str.append(getSdpLineForField("model", t_videoStream.get_intrinsics().model));
 
-    for(size_t i = 0; i < 5; i++)
+    for (size_t i = 0; i < 5; i++)
     {
         str.append(getSdpLineForField("coeff_" + i, t_videoStream.get_intrinsics().coeffs[i]));
     }
@@ -113,6 +113,42 @@ std::string getSdpLineForVideoStream(rs2::video_stream_profile& t_videoStream, s
     str.append(getSdpLineForField("extrinsics", get_extrinsics_string_per_stream(device, t_videoStream).c_str()));
 
     std::string name = device.get()->getDevice().get_info(RS2_CAMERA_INFO_NAME);
+    // We don't want to sent spaces over SDP , replace all spaces with '^'
+    std::replace(name.begin(), name.end(), ' ', '^');
+    str.append(getSdpLineForField("cam_name", name.c_str()));
+
+    return str;
+}
+
+std::string getSdpLineForVideo(rs2::video_stream_profile& t_videoStream)
+{
+    std::string str;
+    str.append(getSdpLineForField("width", t_videoStream.width()));
+    str.append(getSdpLineForField("height", t_videoStream.height()));
+    str.append(getSdpLineForField("format", t_videoStream.format()));
+    str.append(getSdpLineForField("uid", t_videoStream.unique_id()));
+    str.append(getSdpLineForField("fps", t_videoStream.fps()));
+    str.append(getSdpLineForField("stream_index", t_videoStream.stream_index()));
+    str.append(getSdpLineForField("stream_type", t_videoStream.stream_type()));
+    str.append(getSdpLineForField("bpp", RsSensor::getStreamProfileBpp(t_videoStream.format())));
+    str.append(getSdpLineForField("cam_serial_num", "1234567890"));
+    str.append(getSdpLineForField("usb_type", "9.9"));
+    str.append(getSdpLineForField("compression", CompressionFactory::isEnabled()));
+
+    str.append(getSdpLineForField("ppx", t_videoStream.get_intrinsics().ppx));
+    str.append(getSdpLineForField("ppy", t_videoStream.get_intrinsics().ppy));
+    str.append(getSdpLineForField("fx", t_videoStream.get_intrinsics().fx));
+    str.append(getSdpLineForField("fy", t_videoStream.get_intrinsics().fy));
+    str.append(getSdpLineForField("model", t_videoStream.get_intrinsics().model));
+
+    for (size_t i = 0; i < 5; i++)
+    {
+        str.append(getSdpLineForField("coeff_" + i, t_videoStream.get_intrinsics().coeffs[i]));
+    }
+
+    //// str.append(getSdpLineForField("extrinsics", get_extrinsics_string_per_stream(device, t_videoStream).c_str()));
+
+    std::string name = "RealSense camera";
     // We don't want to sent spaces over SDP , replace all spaces with '^'
     std::replace(name.begin(), name.end(), ' ', '^');
     str.append(getSdpLineForField("cam_name", name.c_str()));
@@ -143,4 +179,49 @@ RsSimpleRTPSink ::RsSimpleRTPSink(UsageEnvironment& t_env,
 char const* RsSimpleRTPSink::auxSDPLine()
 {
     return m_fFmtpSDPLine;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+RsRawVideoRTPSink* RsRawVideoRTPSink::createNew(UsageEnvironment& env, Groupsock* RTPgs, u_int8_t rtpPayloadFormat,
+    // The following headers provide the 'configuration' information, for the SDP description:
+    unsigned depth,
+    rs2::video_stream_profile& video_stream, char const* sampling, char const* colorimetry)
+{
+    return new RsRawVideoRTPSink(env, RTPgs, rtpPayloadFormat,
+        depth, video_stream, sampling, colorimetry);
+}
+
+RsRawVideoRTPSink::RsRawVideoRTPSink(UsageEnvironment& env, Groupsock* RTPgs, u_int8_t rtpPayloadFormat, unsigned depth,
+    rs2::video_stream_profile& video_stream, char const* sampling, char const* colorimetry)
+    : RawVideoRTPSink(env, RTPgs, rtpPayloadFormat, video_stream.height(), video_stream.width(), depth, sampling, colorimetry) 
+{
+    // Then use this 'config' string to construct our "a=fmtp:" SDP line:
+    unsigned fmtpSDPLineMaxSize = SDP_MAX_LINE_LENGHT;
+    fFmtpSDPLine = new char[fmtpSDPLineMaxSize];
+    std::string sdpStr = getSdpLineForVideo(video_stream);
+    sprintf(fFmtpSDPLine, "a=fmtp:%d;%s\r\n", rtpPayloadType(), sdpStr.c_str());
+
+#if 0
+    unsigned fmtpSDPLineMaxSize = 200;// 200 => more than enough space
+    fFmtpSDPLine = new char[fmtpSDPLineMaxSize];
+    sprintf(fFmtpSDPLine, "a=fmtp:%d sampling=%s;depth=%u;width=%d;height=%d;format=%d;uid=%d;fps=%u;index=%d;stream_type=%d;colorimetry=%s\r\n",
+        rtpPayloadType(), sampling, depth,
+        video_stream.width(), video_stream.height(), video_stream.format(), video_stream.unique_id(),
+        video_stream.fps(), video_stream.stream_index(), video_stream.stream_type(), colorimetry);
+#endif
+
+    // Set parameters
+    fSampling = strDup(sampling);
+    fColorimetry = strDup(colorimetry);
+}
+
+void RsRawVideoRTPSink::stopPlaying()
+{
+    //fCurFragmentationOffset = 0;
+    RawVideoRTPSink::stopPlaying();
+}
+
+char const* RsRawVideoRTPSink::auxSDPLine() {
+    return fFmtpSDPLine;
 }
