@@ -196,11 +196,14 @@ RsRawVideoRTPSink::RsRawVideoRTPSink(UsageEnvironment& env, Groupsock* RTPgs, u_
     rs2::video_stream_profile& video_stream, char const* sampling, char const* colorimetry)
     : RawVideoRTPSink(env, RTPgs, rtpPayloadFormat, video_stream.height(), video_stream.width(), depth, sampling, colorimetry) 
 {
+#if 1    
     // Then use this 'config' string to construct our "a=fmtp:" SDP line:
     unsigned fmtpSDPLineMaxSize = SDP_MAX_LINE_LENGHT;
     fFmtpSDPLine = new char[fmtpSDPLineMaxSize];
     std::string sdpStr = getSdpLineForVideo(video_stream);
-    sprintf(fFmtpSDPLine, "a=fmtp:%d;%s\r\n", rtpPayloadType(), sdpStr.c_str());
+    sprintf(fFmtpSDPLine, "a=fmtp:%d sampling=%s;depth=%u;colorimetry=%s;%s\r\n",
+        rtpPayloadType(), sampling, depth, colorimetry, sdpStr.c_str());
+#endif        
 
 #if 0
     unsigned fmtpSDPLineMaxSize = 200;// 200 => more than enough space

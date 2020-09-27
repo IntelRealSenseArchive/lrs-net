@@ -54,22 +54,22 @@ RTPSink* RsServerMediaSubsession::createNewRTPSink(Groupsock* rtpGroupsock, unsi
         case  RS2_FORMAT_RGB8:
         {
             pixelSize = 3;
-            return  RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, pixelSize * 8, m_videoStreamProfile, "RGB", "BT709-2");
+            return  RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, 16, m_videoStreamProfile, "RGB", "BT709-2");
         }
         case  RS2_FORMAT_BGR8:
         {
             pixelSize = 3;
-            return RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, pixelSize * 8, m_videoStreamProfile, "BGR", "BT709-2");
+            return RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, 16, m_videoStreamProfile, "BGR", "BT709-2");
         }
         case  RS2_FORMAT_RGBA8:
         {
             pixelSize = 4;
-            return RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, pixelSize * 8, m_videoStreamProfile, "RGBA", "BT709-2");
+            return RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, 16, m_videoStreamProfile, "RGBA", "BT709-2");
         }
         case  RS2_FORMAT_BGRA8:
         {
             pixelSize = 4;
-            return RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, pixelSize * 8, m_videoStreamProfile, "BGRA", "BT709-2");
+            return RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, 16, m_videoStreamProfile, "BGRA", "BT709-2");
         }
         case  RS2_FORMAT_Z16:
         case  RS2_FORMAT_Y16:
@@ -77,7 +77,7 @@ RTPSink* RsServerMediaSubsession::createNewRTPSink(Groupsock* rtpGroupsock, unsi
         case  RS2_FORMAT_YUYV:
         {
             pixelSize = 2;
-            return RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, pixelSize * 8, m_videoStreamProfile, "YCbCr-4:2:2", "BT709-2");
+            return RsRawVideoRTPSink::createNew(envir(), rtpGroupsock, rtpPayloadTypeIfDynamic, 16, m_videoStreamProfile, "YCbCr-4:2:2", "BT709-2");
         }
         default:
         {
