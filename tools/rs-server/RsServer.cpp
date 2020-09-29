@@ -33,11 +33,7 @@ struct server
     std::vector<RsSensor> sensors;
     TaskScheduler* scheduler;
     unsigned int port = 8554;
-    std::map<rs2_format, std::map<res_pair, std::vector<int>>> formats_map;
-
-    void create_formats_map()
-    {
-        std::map<res_pair, std::vector<int>> z16_map =
+    std::map<res_pair, std::vector<int>> z16_map =
         {
             { std::make_pair(1280,720), {6,15} },
             { std::make_pair(848,480), {6,15,30} },
@@ -66,15 +62,18 @@ struct server
             { std::make_pair(424,240), {6,15,30,60} },
         };
         
-        formats_map.insert(std::make_pair(RS2_FORMAT_Z16, z16_map));
-        formats_map.insert(std::make_pair(RS2_FORMAT_Y8, y8_map));
-        formats_map.insert(std::make_pair(RS2_FORMAT_UYVY, uyvy_map));
-        formats_map.insert(std::make_pair(RS2_FORMAT_YUYV, yuy2_map));
+        std::map<rs2_format, std::map<res_pair, std::vector<int>>> formats_map =
+        {
+            { std::make_pair(RS2_FORMAT_Z16, z16_map) },
+            { std::make_pair(RS2_FORMAT_Y8, y8_map) },
+            { std::make_pair(RS2_FORMAT_UYVY, uyvy_map) },
+            { std::make_pair(RS2_FORMAT_YUYV, yuy2_map) },
+
+        };
 
         // DOTO: what about these formats?
         //RS2_FORMAT_BGR8 
-        //RS2_FORMAT_RGB8      
-    }
+        //RS2_FORMAT_RGB8          
 
     void main(int argc, char** argv)
     {
@@ -124,8 +123,6 @@ struct server
             *env << "Failed to create RTSP server: " << env->getResultMsg() << "\n";
             exit(1);
         }
-
-        create_formats_map();
 
         sensors = rsDevice.get()->getSensors();
         for(auto sensor : sensors)
