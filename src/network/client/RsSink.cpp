@@ -7,6 +7,7 @@
 // NOTE: Should be the last include othervise causes Winsock2 
 //       linking error with Easylogging++
 #include <types.h>
+#include <iostream>
 
 #define WRITE_FRAMES_TO_FILE 0
 
@@ -84,6 +85,7 @@ void RsSink::afterGettingFrameUid3(void* t_clientData, unsigned t_frameSize, uns
 
 void RsSink::afterGettingFrame(unsigned t_frameSize, unsigned t_numTruncatedBytes, struct timeval t_presentationTime, unsigned /*t_durationInMicroseconds*/)
 {
+    std::cout << "*** afterGettingFrame" << std::endl;
     RsNetworkHeader* header = (RsNetworkHeader*)m_receiveBuffer;
     if(header->data.frameSize == t_frameSize - sizeof(RsNetworkHeader))
     {
@@ -109,6 +111,7 @@ void RsSink::afterGettingFrame(unsigned t_frameSize, unsigned t_numTruncatedByte
             else
 #endif
             {
+                std::cout << "*** Calling on_frame()" << std::endl;
                 this->m_rtpCallback->on_frame(m_receiveBuffer + sizeof(RsNetworkHeader), header->data.frameSize, t_presentationTime);
             }
         }

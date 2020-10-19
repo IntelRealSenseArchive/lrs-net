@@ -80,8 +80,11 @@ RsMediaSubsession::~RsMediaSubsession()
 
 Boolean RsMediaSubsession::createSourceObjects(int useSpecialRTPoffset)
 {
+    std::cout << "*** codec: " << fCodecName << std::endl;
     if(strcmp(fCodecName, RS_PAYLOAD_FORMAT.c_str()) == 0)
     {
+        std::cout << "*** Recognized format" << std::endl;
+
         // This subsession uses our custom RTP payload format:
         std::string mimeTypeString = RS_MEDIA_TYPE + "/" + RS_PAYLOAD_FORMAT;
         fReadSource = fRTPSource = SimpleRTPSource::createNew(env(), fRTPSocket, fRTPPayloadFormat, fRTPTimestampFrequency, mimeTypeString.c_str());
@@ -107,6 +110,13 @@ Boolean RsMediaSubsession::createSourceObjects(int useSpecialRTPoffset)
     else
     {
         // This subsession uses some other RTP payload format - perhaps one that we already implement:
-        return MediaSubsession::createSourceObjects(useSpecialRTPoffset);
+        fReadSource = fRTPSource = 0;
+        bool res = MediaSubsession::createSourceObjects(useSpecialRTPoffset);
+        std::cout << "*** fReadSource = fRTPSource = " << fRTPSource << " " << typeid(fRTPSource).name() << " / " << typeid(RawVideoRTPSource).name() << " / " << typeid(SimpleRTPSource*).name() << std::endl;
+
+        // if (typeid(fRTPSource) == typeid(SimpleRTPSource*)) {
+        //     std::cout << "*** SimpleRTPSource" << std::endl;
+        // }
+        return res;
     }
 }

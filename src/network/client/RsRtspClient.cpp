@@ -139,10 +139,11 @@ int RsRTSPClient::addStream(rs2_video_stream t_stream, rs_rtp_callback *t_callba
     // perhaps use your own custom "MediaSink" subclass instead
     if (subsession->sink == NULL)
     {
+        std::cout << "Failed to create a data sink for the subsession: " << this->envir().getResultMsg() << std::endl;
         this->envir() << "Failed to create a data sink for the subsession: " << this->envir().getResultMsg() << "\n";
         RsRtspReturnValue err = {(RsRtspReturnCode)envir().getErrno(), std::string("Failed to create a data sink for the subsession: " + std::string(envir().getResultMsg()))};
         throw std::runtime_error(format_error_msg(__FUNCTION__, err));
-    }
+    } else std::cout << "*** Created a data sink for the subsession: " << this->envir().getResultMsg() << " with source " << subsession->readSource()->name() << std::endl;
 
     subsession->miscPtr = this; // a hack to let subsession handler functions get the "RTSPClient" from the subsession
     ((RsSink *)(subsession->sink))->setCallback(t_callbackObj);
