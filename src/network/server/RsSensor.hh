@@ -19,30 +19,26 @@ typedef struct RsOption
 class RsSensor
 {
 public:
-    RsSensor(UsageEnvironment* t_env, rs2::sensor t_sensor, rs2::device t_device);
-    int open(std::unordered_map<long long int, rs2::frame_queue>& t_streamProfilesQueues);
-    int start(std::unordered_map<long long int, rs2::frame_queue>& t_streamProfilesQueues);
+    RsSensor(UsageEnvironment* t_env, rs2::device t_device, rs2::sensor t_sensor);
+
+    int open(rs2::video_stream_profile& profile);
+    int start(rs2::video_stream_profile& profile, rs2::frame_queue& queue);
     int close();
     int stop();
-    rs2::sensor& getRsSensor()
-    {
-        return m_sensor;
-    }
-    std::unordered_map<long long int, rs2::video_stream_profile> getStreamProfiles()
-    {
-        return m_streamProfiles;
-    }
+
+    rs2::sensor& getRsSensor() { return m_sensor; }
+
+    std::unordered_map<long long int, rs2::video_stream_profile> getStreamProfiles() { return m_streamProfiles; }
+
     static long long int getStreamProfileKey(rs2::stream_profile t_profile);
     std::string getSensorName();
     static int getStreamProfileBpp(rs2_format t_format);
-    rs2::device getDevice()
-    {
-        return m_device;
-    }
+    rs2::device getDevice() { return m_device; }
     std::vector<RsOption> getSupportedOptions();
 
 private:
     UsageEnvironment* env;
+
     rs2::sensor m_sensor;
     std::unordered_map<long long int, rs2::video_stream_profile> m_streamProfiles;
     std::unordered_map<long long int, std::shared_ptr<ICompression>> m_iCompress;

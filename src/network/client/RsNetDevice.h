@@ -3,15 +3,15 @@
 
 #pragma once
 
-#include "RsRtspClient.h"
-#include "RsRtpCallback.h"
-
-#include "option.h"
-#include "software-device.h"
+#include <option.h>
+#include <software-device.h>
 #include <librealsense2/hpp/rs_internal.hpp>
 #include <librealsense2/rs.hpp>
 
 #include <list>
+
+#include "liveMedia.hh"
+#include "BasicUsageEnvironment.hh"
 
 #define MAX_ACTIVE_STREAMS 4
 
@@ -27,6 +27,21 @@
 
 #define DEFAULT_PROFILE_COLOR_FORMAT RS2_FORMAT_RGB8 
 
+// Define a class to hold per-stream state that we maintain throughout each stream's lifetime:
+
+class StreamClientState {
+public:
+  StreamClientState();
+  virtual ~StreamClientState();
+
+public:
+  MediaSubsessionIterator* iter;
+  MediaSession* session;
+  MediaSubsession* subsession;
+  TaskToken streamTimerTask;
+  double duration;
+};
+
 class ip_sensor
 {
 public:
@@ -39,7 +54,72 @@ public:
 
     bool is_enabled;
 
-    RsRtsp* rtsp_client; // TODO: get smart ptr from rtsp client creator
+//    RsRtsp* rtsp_client; // TODO: get smart ptr from rtsp client creator
+};
+
+// Define a data sink (a subclass of "MediaSink") to receive the data for each subsession (i.e., each audio or video 'substream').
+// In practice, this might be a class (or a chain of classes) that decodes and then renders the incoming audio or video.
+// Or it might be a "FileSink", for outputting the received data into a file (as is done by the "openRTSP" application).
+// In this example code, however, we define a simple 'dummy' sink that receives incoming data, but does nothing with it.
+
+class RSSink : public MediaSink
+{
+public:
+    static RSSink* createNew(UsageEnvironment& env,
+                                MediaSubsession& subsession, // identifies the kind of data that's being received
+                                char const* streamId = NULL); // identifies the stream itself (optional)
+
+    uint8_t* getFrame();
+
+private:
+    RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId); // called only by "createNew()"
+    virtual ~RSSink();
+
+    static void afterGettingFrame(void* clientData, unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds); // callback
+    void afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds); // member
+
+private:
+    // redefined virtual functions:
+    virtual Boolean continuePlaying();
+
+private:
+    uint8_t* fReceiveBuffer;
+    
+    std::mutex m_frames_mutex;
+    std::queue<uint8_t*> m_frames;
+
+    MediaSubsession& fSubsession;
+    char* fStreamId;
+};
+
+class RSRTSPClient : public RTSPClient
+{
+public:
+    static RSRTSPClient* createNew(UsageEnvironment& env, char const* rtspURL);
+
+protected:
+    RSRTSPClient(UsageEnvironment& env, char const* rtspURL); // called only by createNew();
+    virtual ~RSRTSPClient();
+
+public:
+    StreamClientState m_scs;
+
+    void startRTPSession(rs2::video_stream_profile stream);
+
+    void shutdownStream();
+
+    static void continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultString); // callback
+    void continueAfterDESCRIBE(int resultCode, char* resultString); // member
+
+    static void continueAfterSETUP(RTSPClient* rtspClient, int resultCode, char* resultString); // callback
+    void continueAfterSETUP(int resultCode, char* resultString); // member
+
+    static void continueAfterPLAY(RTSPClient* rtspClient, int resultCode, char* resultString); // callback
+    void continueAfterPLAY(int resultCode, char* resultString); // member
+
+    static void subsessionAfterPlaying(void* clientData);
+    static void subsessionByeHandler(void* clientData, char const* reason);
+    static void streamTimerHandler(void* clientData);
 };
 
 class rs_net_device
@@ -47,49 +127,61 @@ class rs_net_device
 
 public:
     rs_net_device(rs2::software_device sw_device, std::string ip_address);
-    ~rs_net_device();
+   ~rs_net_device();
 
-    ip_sensor* remote_sensors[NUM_OF_SENSORS];
+    // ip_sensor* remote_sensors[NUM_OF_SENSORS];
 
 private:
-    bool is_device_alive;
+    std::string  m_ip_address;
+    unsigned int m_ip_port;
 
-    std::string  ip_address;
-    unsigned int ip_port;
+    rs2::software_device& m_device;
 
-    //todo: consider wrapp all maps to single container
-    std::map<long long int, std::shared_ptr<rs_rtp_stream>> streams_collection;
+    std::thread m_rtp;
+    std::thread m_dev;
 
-    std::map<long long int, std::thread> inject_frames_thread;
+    RSRTSPClient* m_rtspClient;
+    char m_eventLoopWatchVariable;
 
-    std::map<long long int, rs_rtp_callback*> rtp_callbacks;
+    void doRTP();
+    void doDevice();
 
-    std::thread sw_device_status_check;
+    // bool is_device_alive;
 
-    bool init_device_data(rs2::software_device sw_device);
+    // //todo: consider wrapp all maps to single container
+    // //std::map<long long int, std::shared_ptr<rs_rtp_stream>> streams_collection;
 
-    void polling_state_loop();
+    // std::map<long long int, std::thread> inject_frames_thread;
 
-    void inject_frames_loop(std::shared_ptr<rs_rtp_stream> rtp_stream);
+    // //std::map<long long int, rs_rtp_callback*> rtp_callbacks;
 
-    void stop_sensor_streams(int sensor_id);
+    // std::thread sw_device_status_check;
 
-    void update_sensor_state(int sensor_index, std::vector<rs2::stream_profile> updated_streams, bool recover);
+    // // bool init_device_data(rs2::software_device sw_device);
+
+    // void polling_state_loop();
+
+    // //void inject_frames_loop(std::shared_ptr<rs_rtp_stream> rtp_stream);
+
+    // void stop_sensor_streams(int sensor_id);
+
+    // void update_sensor_state(int sensor_index, std::vector<rs2::stream_profile> updated_streams, bool recover);
     
-    void set_option_value(int sensor_index, rs2_option opt, float val);
-    float get_option_value(int sensor_index, rs2_option opt);
+    // void set_option_value(int sensor_index, rs2_option opt, float val);
+    // float get_option_value(int sensor_index, rs2_option opt);
 
-    std::vector<rs2_video_stream> query_streams(int sensor_id);
+    // std::vector<rs2_video_stream> query_streams(int sensor_id);
 
-    std::vector<IpDeviceControlData> get_controls(int sensor_id);
+    // std::vector<IpDeviceControlData> get_controls(int sensor_id);
 
-    void recover_rtsp_client(int sensor_index);
+    // void recover_rtsp_client(int sensor_index);
 
-    // default device stream index per type + sensor_index
-    // streams will be loaded at runtime so here the place holder  
-    std::map<std::pair<rs2_stream,int>,int> default_streams = 
-    { 
-        { std::make_pair(rs2_stream::RS2_STREAM_COLOR,0),-1},
-        { std::make_pair(rs2_stream::RS2_STREAM_DEPTH,0),-1}
-    };
+    // // default device stream index per type + sensor_index
+    // // streams will be loaded at runtime so here the place holder  
+    // std::map<std::pair<rs2_stream,int>,int> default_streams = 
+    // { 
+    //     { std::make_pair(rs2_stream::RS2_STREAM_COLOR,0),-1},
+    //     { std::make_pair(rs2_stream::RS2_STREAM_DEPTH,0),-1}
+    // };
+
 };

@@ -15,10 +15,7 @@ class RsDevice
 public:
     RsDevice(UsageEnvironment *t_env, rs2::device dev);
     ~RsDevice();
-    std::vector<RsSensor>& getSensors()
-    {
-        return m_sensors;
-    }
+    std::vector<RsSensor>& getSensors() { return m_sensors; }
 
     static int getPhysicalSensorUniqueKey(rs2_stream stream_type, int sensors_index);
 
@@ -28,10 +25,7 @@ public:
     // todo: make smart_ptr
     std::map<std::pair<int, int>, rs2_extrinsics> minimal_extrinsics_map;
 
-    rs2::device getDevice()
-    {
-        return m_device;
-    }
+    rs2::device getDevice() { return m_device; }
 
 private:
     rs2::device m_device;

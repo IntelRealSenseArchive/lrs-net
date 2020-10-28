@@ -10,7 +10,7 @@
 #include <math.h>
 #include <thread>
 
-RsSensor::RsSensor(UsageEnvironment* t_env, rs2::sensor t_sensor, rs2::device t_device)
+RsSensor::RsSensor(UsageEnvironment* t_env, rs2::device t_device, rs2::sensor t_sensor)
     : env(t_env)
     , m_sensor(t_sensor)
     , m_device(t_device)
@@ -26,29 +26,10 @@ RsSensor::RsSensor(UsageEnvironment* t_env, rs2::sensor t_sensor, rs2::device t_
     }
 }
 
-int RsSensor::open(std::unordered_map<long long int, rs2::frame_queue>& t_streamProfilesQueues)
+int RsSensor::open(rs2::video_stream_profile& profile)
 {
-    std::vector<rs2::stream_profile> requestedStreamProfiles;
-    for(auto streamProfile : t_streamProfilesQueues)
-    {
-        //make a vector of all requested stream profiles
-        long long int streamProfileKey = streamProfile.first;
-        requestedStreamProfiles.push_back(m_streamProfiles.at(streamProfileKey));
-        if(CompressionFactory::isCompressionSupported(m_streamProfiles.at(streamProfileKey).format(), m_streamProfiles.at(streamProfileKey).stream_type()))
-        {
-            rs2::video_stream_profile vsp = m_streamProfiles.at(streamProfileKey);
-            std::shared_ptr<ICompression> compressPtr = CompressionFactory::getObject(vsp.width(), vsp.height(), vsp.format(), vsp.stream_type(), RsSensor::getStreamProfileBpp(vsp.format()));
-            if(compressPtr != nullptr)
-            {
-                m_iCompress.insert(std::pair<long long int, std::shared_ptr<ICompression>>(streamProfileKey, compressPtr));
-            }
-        }
-        else
-        {
-            *env << "unsupported compression format or compression is disabled, continue without compression\n";
-        }
-    }
-    m_sensor.open(requestedStreamProfiles);
+    std::cout << "Sensor opened" << std::endl;
+    m_sensor.open(profile);
     return EXIT_SUCCESS;
 }
 
@@ -64,31 +45,13 @@ int RsSensor::stop()
     return EXIT_SUCCESS;
 }
 
-int RsSensor::start(std::unordered_map<long long int, rs2::frame_queue>& t_streamProfilesQueues)
+int RsSensor::start(rs2::video_stream_profile& profile, rs2::frame_queue& queue)
 {
+    std::cout << "Sensor started" << std::endl;
+
     auto callback = [&](const rs2::frame& frame) {
-        long long int profileKey = getStreamProfileKey(frame.get_profile());
-        //check if profile exists in map:
-        if(t_streamProfilesQueues.find(profileKey) != t_streamProfilesQueues.end())
-        {
-            std::chrono::high_resolution_clock::time_point curSample = std::chrono::high_resolution_clock::now();
-            std::chrono::duration<double> timeSpan = std::chrono::duration_cast<std::chrono::duration<double>>(curSample - m_prevSample[profileKey]);
-            if(CompressionFactory::isCompressionSupported(frame.get_profile().format(), frame.get_profile().stream_type()))
-            {
-                unsigned char* buff = new unsigned char[MAX_MESSAGE_SIZE];
-                int frameSize = m_iCompress.at(profileKey)->compressBuffer((unsigned char*)frame.get_data(), frame.get_data_size(), buff);
-                if(frameSize == -1)
-                {
-                    delete [] buff;
-                    return;
-                }
-                memcpy((unsigned char*)frame.get_data(), buff, frameSize);
-                delete[] buff;
-            }
-            //push frame to its queue
-            t_streamProfilesQueues[profileKey].enqueue(frame);
-            m_prevSample[profileKey] = curSample;
-        }
+        //push frame to its queue
+        queue.enqueue(frame);
     };
     m_sensor.start(callback);
     return EXIT_SUCCESS;
@@ -114,7 +77,7 @@ std::string RsSensor::getSensorName()
     }
     else
     {
-        return "Unknown Sensor";
+        return "unknown";
     }
 }
 

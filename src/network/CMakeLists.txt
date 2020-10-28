@@ -15,17 +15,17 @@ add_definitions(-DNEWLOCALE_NOT_USED=1 -DBSD=1 -DSOCKLEN_T=socklen_t -D_FILE_OFF
 #target_compile_definitions(${PROJECT_NAME} PUBLIC RESPONSE_BUFFER_SIZE=100000)
 
 set(RS_CLIENT_NET_CPP
-    ./client/RsMediaSession.cpp
-    ./client/RsMediaSession.h
+#    ./client/RsMediaSession.cpp
+#    ./client/RsMediaSession.h
     ./client/RsNetDevice.cpp
     ./client/RsNetDevice.h
-    ./client/RsRtpCallback.h
-    ./client/RsRtpStream.h
-    ./client/RsRtsp.h
-    ./client/RsRtspClient.cpp
-    ./client/RsRtspClient.h
-    ./client/RsSink.cpp
-    ./client/RsSink.h
+#    ./client/RsRtpCallback.h
+#    ./client/RsRtpStream.h
+#    ./client/RsRtsp.h
+#    ./client/RsRtspClient.cpp
+#    ./client/RsRtspClient.h
+#    ./client/RsSink.cpp
+#    ./client/RsSink.h
 )
 
 set(RS_COMMON_NET_CPP
@@ -51,18 +51,18 @@ set(RS_COMP_NET_CPP
 set(RS_SERVER_NET_CPP
     ./server/RsDevice.cpp
     ./server/RsDevice.hh
-    ./server/RsRTSPServer.cpp
-    ./server/RsRTSPServer.hh
+#    ./server/RsRTSPServer.cpp
+#    ./server/RsRTSPServer.hh
     ./server/RsSensor.cpp
     ./server/RsSensor.hh
     ./server/RsServer.cpp
     ./server/RsServer.h
-    ./server/RsServerMediaSession.cpp
-    ./server/RsServerMediaSession.h
+#    ./server/RsServerMediaSession.cpp
+#    ./server/RsServerMediaSession.h
     ./server/RsServerMediaSubsession.cpp
     ./server/RsServerMediaSubsession.h
-    ./server/RsSimpleRTPSink.cpp
-    ./server/RsSimpleRTPSink.h
+#    ./server/RsSimpleRTPSink.cpp
+#    ./server/RsSimpleRTPSink.h
     ./server/RsSource.cpp
     ./server/RsSource.hh
 )

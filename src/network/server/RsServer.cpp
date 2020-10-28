@@ -30,72 +30,51 @@ server::server(rs2::device dev, std::string addr, int port)
     scheduler = BasicTaskScheduler::createNew();
     env = RSUsageEnvironment::createNew(*scheduler);
 
-    rsDevice = std::make_shared<RsDevice>(env, dev);
-    rtspServer = RsRTSPServer::createNew(*env, rsDevice, port);
-    if (rtspServer == NULL)
+    RSServer = RTSPServer::createNew(*env, 8554, NULL);
+    if (RSServer == NULL)
     {
-        *env << "Failed to create RTSP server: " << env->getResultMsg() << "\n";
+        std::cout << "Failed to create RTSP server: " << env->getResultMsg() << std::endl;
         exit(1);
     }
 
-    sensors = rsDevice.get()->getSensors();
-    for (auto sensor : sensors)
+    rsDevice = std::make_shared<RsDevice>(env, dev);
+    for (auto sensor : rsDevice.get()->getSensors())
     {
-        RsServerMediaSession* sms;
-        if (sensor.getSensorName().compare(STEREO_SENSOR_NAME) == 0 || sensor.getSensorName().compare(RGB_SENSOR_NAME) == 0)
-        {
-            sms = RsServerMediaSession::createNew(*env, sensor, sensor.getSensorName().data(), "", "Session streamed by \"realsense streamer\"", False);
+        std::cout << "Sensor\t: " << sensor.getSensorName().c_str() << std::endl;
+        // ServerMediaSession* sms = ServerMediaSession::createNew(*env, sensor.getSensorName().c_str(), sensor.getSensorName().c_str(), "Session streamed by LRS-Net");
+
+        std::string path;
+        for(auto& c : sensor.getSensorName()) {
+            if (c != ' ') path += tolower(c);
         }
-        else
-        {
-            break;
-        }
+
+        ServerMediaSession* sms = ServerMediaSession::createNew(*env, path.c_str(), path.c_str(), "Session streamed by LRS-Net");
 
         for (auto stream_profile : sensor.getStreamProfiles())
         {
             rs2::video_stream_profile stream = stream_profile.second;
-            if (stream.format() == RS2_FORMAT_BGR8 || stream.format() == RS2_FORMAT_RGB8 || stream.format() == RS2_FORMAT_Z16 || stream.format() == RS2_FORMAT_Y8 || stream.format() == RS2_FORMAT_YUYV || stream.format() == RS2_FORMAT_UYVY)
+            std::cout << " Stream\t: " << std::setw(10) << rs2_stream_to_string(stream.stream_type()) << "\t" << rs2_format_to_string(stream.format()) << "\t" << stream.width() << "x" << stream.height() << "x" << stream.fps() << "\t - ";
+//            if (stream.format() == RS2_FORMAT_YUYV  || stream.format() == RS2_FORMAT_UYVY) //  || 
+            if (stream.format() == RS2_FORMAT_RGB8) //   || stream.format() == RS2_FORMAT_BGR8 )
+//                stream.format() == RS2_FORMAT_RGBA8 || stream.format() == RS2_FORMAT_BGRA8)
             {
-                if (stream.fps() == 6)
+                // if (stream.fps() == 30)
                 {
-                    if ((stream.width() == 1280 && stream.height() == 720) || (stream.width() == 640 && stream.height() == 480) || (stream.width() == 480 && stream.height() == 270) || (stream.width() == 424 && stream.height() == 240))
+                    if (stream.width() == 640 && stream.height() == 480)
                     {
-                        sms->addSubsession(RsServerMediaSubsession::createNew(*env, stream, rsDevice));
-
+                        sms->addSubsession(RsServerMediaSubsession::createNew(*env, sensor, stream));
                         supported_stream_profiles.push_back(stream);
-                        continue;
-                    }
-                }
-                else if (stream.fps() == 15 || stream.fps() == 30)
-                {
-                    if ((stream.width() == 640 && stream.height() == 480) || (stream.width() == 480 && stream.height() == 270) || (stream.width() == 424 && stream.height() == 240))
-                    {
-                        sms->addSubsession(RsServerMediaSubsession::createNew(*env, stream, rsDevice));
-                        supported_stream_profiles.push_back(stream);
-                        continue;
-                    }
-                }
-                else if (stream.fps() == 60)
-                {
-                    if ((stream.width() == 480 && stream.height() == 270) || (stream.width() == 424 && stream.height() == 240))
-                    {
-                        sms->addSubsession(RsServerMediaSubsession::createNew(*env, stream, rsDevice));
-                        supported_stream_profiles.push_back(stream);
+                        std::cout << "ACCEPTED" << std::endl;
                         continue;
                     }
                 }
             }
-            *env << "Ignoring stream: format: " << stream.format() << " width: " << stream.width() << " height: " << stream.height() << " fps: " << stream.fps() << "\n";
+            std::cout << "ignored" << std::endl;
         }
 
-        calculate_extrinsics();
-
-        rtspServer->addServerMediaSession(sms);
-        char* url = rtspServer->rtspURL(sms);
-        *env << "Play this stream using the URL \"" << url << "\"\n";
-
-        // query camera options
-        rtspServer->setSupportedOptions(sensor.getSensorName(), sensor.getSupportedOptions());
+        RSServer->addServerMediaSession(sms);
+        char* url = RSServer->rtspURL(sms); // should be deallocated later
+        std::cout << "Access\t: " << url << std::endl << std::endl;
 
         delete[] url;
     }
@@ -110,23 +89,9 @@ void server::stop()
 {
 }
 
-void server::calculate_extrinsics()
-{
-    for(auto stream_profile_from : supported_stream_profiles)
-    {
-        for(auto stream_profile_to : supported_stream_profiles)
-        {
-            int from_sensor_key = RsDevice::getPhysicalSensorUniqueKey(stream_profile_from.stream_type(), stream_profile_from.stream_index());
-            int to_sensor_key = RsDevice::getPhysicalSensorUniqueKey(stream_profile_to.stream_type(), stream_profile_to.stream_index());
-
-            rsDevice.get()->minimal_extrinsics_map[std::make_pair(from_sensor_key, to_sensor_key)] = stream_profile_from.get_extrinsics_to(stream_profile_to);
-        }
-    }
-}
-
 server::~server()
 {
-    Medium::close(rtspServer);
+    Medium::close(RSServer);
     env->reclaim();
     env = NULL;
     delete scheduler;

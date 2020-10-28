@@ -19,7 +19,7 @@ RsDevice::RsDevice(UsageEnvironment* t_env, rs2::device dev)
     // get device sensors
     for(auto& sensor : m_device.query_sensors())
     {
-        m_sensors.push_back(RsSensor(env, sensor, m_device));
+        m_sensors.push_back(RsSensor(env, m_device, sensor));
     }
 }
 

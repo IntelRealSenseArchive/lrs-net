@@ -29,14 +29,13 @@ public:
     void stop();
 
 private:
-    void calculate_extrinsics();
-
-    rs2::device selected_device;
-    RsRTSPServer* rtspServer;
     UsageEnvironment* env;
+    TaskScheduler* scheduler;
+
+    RTSPServer* RSServer;
+
     std::shared_ptr<RsDevice> rsDevice;
     std::vector<rs2::video_stream_profile> supported_stream_profiles; // streams for extrinsics map creation
-    std::vector<RsSensor> sensors;
-    TaskScheduler* scheduler;
+
     unsigned int port;
 };

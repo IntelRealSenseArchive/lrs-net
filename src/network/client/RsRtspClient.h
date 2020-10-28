@@ -35,7 +35,7 @@ struct RsRtspReturnValue
     RsRtspReturnCode exit_code;
     std::string msg;
 };
-
+/*
 class StreamClientState
 {
 public:
@@ -48,7 +48,7 @@ public:
 public:
     RsMediaSession* m_session;
 };
-
+*/
 class RsRTSPClient : public RTSPClient, RsRtsp
 {
 public:
