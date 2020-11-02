@@ -15,10 +15,11 @@ int main(int argc, char * argv[]) try
     // Create a simple OpenGL window for rendering:
     window app(1280, 960, "Simple Camera Example");
 
-    rs2::context   ctx;       // Create librealsense context for managing devices
-    rs2::pipeline  pipe(ctx);
-    rs2::colorizer colorizer; // Declare the colorizer (utility class to convert depth data RGB colorspace)
-    rs2::config    cfg;
+    rs2::context     ctx;       // Create librealsense context for managing devices
+    rs2::pipeline    pipe(ctx);
+    rs2::colorizer   colorizer; // Declare the colorizer (utility class to convert depth data RGB colorspace)
+    rs2::config      cfg;
+    rs2::yuy_decoder yuv;
 
     rs2::net_device dev("192.168.1.100:8554");
     dev.add_to(ctx);
@@ -29,7 +30,7 @@ int main(int argc, char * argv[]) try
     }
 
     cfg.enable_device("555555555555");
-    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_RGB8, 30);
+    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_YUYV, 30);
 
     rs2::pipeline_profile pp = pipe.start(cfg);
     std::vector<rs2::stream_profile> profiles = pp.get_streams();
@@ -47,7 +48,7 @@ int main(int argc, char * argv[]) try
         // Collect the new frames from all the connected devices
         try {
             rs2::frameset fs = pipe.wait_for_frames(1000);
-            app.show(fs);
+            app.show(fs.apply_filter(yuv));
         } catch (...) {
             std::cout << "Timeout waiting for the frame" << std::endl;
         }

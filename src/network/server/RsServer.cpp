@@ -54,8 +54,8 @@ server::server(rs2::device dev, std::string addr, int port)
         {
             rs2::video_stream_profile stream = stream_profile.second;
             std::cout << " Stream\t: " << std::setw(10) << rs2_stream_to_string(stream.stream_type()) << "\t" << rs2_format_to_string(stream.format()) << "\t" << stream.width() << "x" << stream.height() << "x" << stream.fps() << "\t - ";
-//            if (stream.format() == RS2_FORMAT_YUYV  || stream.format() == RS2_FORMAT_UYVY) //  || 
-            if (stream.format() == RS2_FORMAT_RGB8) //   || stream.format() == RS2_FORMAT_BGR8 )
+            if (stream.format() == RS2_FORMAT_YUYV  || stream.format() == RS2_FORMAT_UYVY) //  || 
+//            if (stream.format() == RS2_FORMAT_RGB8) //   || stream.format() == RS2_FORMAT_BGR8 )
 //                stream.format() == RS2_FORMAT_RGBA8 || stream.format() == RS2_FORMAT_BGRA8)
             {
                 // if (stream.fps() == 30)

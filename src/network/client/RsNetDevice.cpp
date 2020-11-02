@@ -137,10 +137,10 @@ void rs_net_device::doDevice() {
 
     rs2_intrinsics rgb_intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
 
-    auto p1 = rgb.add_video_stream({ RS2_STREAM_COLOR, 0,  9, 640, 480, 15, 8, RS2_FORMAT_RGB8, rgb_intrinsics }, false);
-    auto p2 = rgb.add_video_stream({ RS2_STREAM_COLOR, 1, 19, 640, 480, 30, 8, RS2_FORMAT_RGB8, rgb_intrinsics }, true);
-    auto p3 = rgb.add_video_stream({ RS2_STREAM_COLOR, 2, 29, 640, 480, 60, 8, RS2_FORMAT_RGB8, rgb_intrinsics }, false);
-    auto p4 = rgb.add_video_stream({ RS2_STREAM_COLOR, 3, 39, 640, 480, 90, 8, RS2_FORMAT_RGB8, rgb_intrinsics }, false);
+    auto p1 = rgb.add_video_stream({ RS2_STREAM_COLOR, 0,  9, 640, 480, 15, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, false);
+    auto p2 = rgb.add_video_stream({ RS2_STREAM_COLOR, 1, 19, 640, 480, 30, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true);
+    auto p3 = rgb.add_video_stream({ RS2_STREAM_COLOR, 2, 29, 640, 480, 60, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, false);
+    auto p4 = rgb.add_video_stream({ RS2_STREAM_COLOR, 3, 39, 640, 480, 90, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, false);
 
     std::cout << "Software device streams configured" << std::endl;
 
