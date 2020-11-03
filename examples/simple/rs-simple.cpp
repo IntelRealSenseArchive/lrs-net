@@ -13,7 +13,7 @@ int main(int argc, char * argv[]) try
     std::cout << std::endl << "Simple Camera Example" << std::endl;
 
     // Create a simple OpenGL window for rendering:
-    window app(1280, 960, "Simple Camera Example");
+    window app(640, 480, "Simple Camera Example");
 
     rs2::context     ctx;       // Create librealsense context for managing devices
     rs2::pipeline    pipe(ctx);
@@ -30,14 +30,14 @@ int main(int argc, char * argv[]) try
     }
 
     cfg.enable_device("555555555555");
-    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_YUYV, 30);
+    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_YUYV, 15);
 
     rs2::pipeline_profile pp = pipe.start(cfg);
     std::vector<rs2::stream_profile> profiles = pp.get_streams();
 
     for (rs2::stream_profile profile : profiles) {
         
-        std::cout << " Profile: " << std::setw(15) << profile.stream_name() 
+        std::cout << " Profile: " << std::setw(15) << profile.stream_type()
                                   << std::setw(15) << profile.format()      
                                   << std::setw(15) << ((rs2::video_stream_profile)profile).width() << "x" << ((rs2::video_stream_profile)profile).height() << "x" << profile.fps() << std::endl;
     }

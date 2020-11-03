@@ -6,6 +6,7 @@
 
 #include <librealsense2/h/rs_sensor.h>
 
+#include "liveMedia.hh"
 #include <BasicUsageEnvironment.hh>
 #include <GroupsockHelper.hh>
 
@@ -21,6 +22,11 @@ RsDeviceSource::RsDeviceSource(UsageEnvironment& t_env, RsSensor sensor, rs2::vi
 {
     std::cout << "RsDeviceSource" << std::endl;
 
+    if (m_rsSensor.is_streaming()) {
+        m_rsSensor.stop();
+        m_rsSensor.close();
+    }
+
     m_rsSensor.open(m_streamProfile);
     m_framesQueue = rs2::frame_queue(100, true);
     m_rsSensor.start(m_streamProfile, m_framesQueue);
@@ -30,32 +36,47 @@ RsDeviceSource::~RsDeviceSource()
 {
     std::cout << "~RsDeviceSource" << std::endl;
 
-    m_rsSensor.getRsSensor().stop();
-    m_rsSensor.getRsSensor().close();
+    if (m_rsSensor.is_streaming()) {
+        m_rsSensor.stop();
+        m_rsSensor.close();
+    }
 }
 
 void RsDeviceSource::doGetNextFrame()
 {
-    // This function is called (by our 'downstream' object) when it asks for new data.
-    rs2::frame frame;
-    try
-    {
-        if(!m_framesQueue.poll_for_frame(&frame))
-        {
-            nextTask() = envir().taskScheduler().scheduleDelayedTask(0, (TaskFunc*)waitForFrame, this);
-        }
-        else
-        {
-            frame.keep();
-            deliverRSFrame(&frame);
+    if (!m_rsSensor.is_streaming()) {
+        try {
+            m_rsSensor.start(m_streamProfile, m_framesQueue);
+        } catch (...) {
+            std::cout << "Frame requested when sensor is closed\n";
         }
     }
-    catch(const std::exception& e)
-    {
+
+    // This function is called (by our 'downstream' object) when it asks for new data.
+    rs2::frame frame;
+    try {
+        if (m_framesQueue.poll_for_frame(&frame)) {
+            if (isCurrentlyAwaitingData()) {
+                frame.keep();
+                gettimeofday(&fPresentationTime, NULL); // If you have a more accurate time - e.g., from an encoder - then use that instead.
+
+                fFrameSize = frame.get_data_size();
+                unsigned char* data = (unsigned char*)frame.get_data();
+                memmove(fTo, data, fFrameSize);
+
+                afterGetting(this); // After delivering the data, inform the reader that it is now available:
+            } else {
+                std::cout << "Attempting to read the frame out of band" << std::endl;
+            }
+        } else {
+            nextTask() = envir().taskScheduler().scheduleDelayedTask(1000, (TaskFunc*)waitForFrame, this);
+        }
+    } catch(const std::exception& e) {
         std::cout << "RsDeviceSource: " << e.what() << '\n';
     }
 }
 
+/*
 void RsDeviceSource::handleWaitForFrame()
 {
     //// std::cout << "RsDeviceSource::handleWaitForFrame" << std::endl;
@@ -80,29 +101,19 @@ void RsDeviceSource::handleWaitForFrame()
         std::cout << "RsDeviceSource: " << e.what() << '\n';
     }
 }
+*/
 
 // The following is called after each delay between packet sends:
 void RsDeviceSource::waitForFrame(RsDeviceSource* t_deviceSource)
 {
     //// std::cout << "RsDeviceSource::waitForFrame" << std::endl;
-    t_deviceSource->handleWaitForFrame();
+    t_deviceSource->doGetNextFrame();
 }
 
-void RsDeviceSource::deliverRSFrame(rs2::frame* t_frame)
-{
-    if(!isCurrentlyAwaitingData())
-    {
-        std::cout << "isCurrentlyAwaitingData returned false" << std::endl;
-        return; // we're not ready for the data yet
+void RsDeviceSource::doStopGettingFrames() {
+    FramedSource::doStopGettingFrames();
+
+    if (m_rsSensor.is_streaming()) {
+        m_rsSensor.stop();
     }
-
-    gettimeofday(&fPresentationTime, NULL); // If you have a more accurate time - e.g., from an encoder - then use that instead.
-
-    fFrameSize = t_frame->get_data_size();
-    unsigned char* data = (unsigned char*)t_frame->get_data();
-
-    memmove(fTo, data, fFrameSize);
-
-    // After delivering the data, inform the reader that it is now available:
-    FramedSource::afterGetting(this);
 }

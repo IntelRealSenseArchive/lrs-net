@@ -27,8 +27,44 @@
 
 #define DEFAULT_PROFILE_COLOR_FORMAT RS2_FORMAT_RGB8 
 
-// Define a class to hold per-stream state that we maintain throughout each stream's lifetime:
+class JPEGDecodeFilter : public FramedFilter
+{
+public:
+    static JPEGDecodeFilter* createNew(UsageEnvironment& t_env, FramedSource* source) { return new JPEGDecodeFilter(t_env, source); };
 
+protected:
+    JPEGDecodeFilter(UsageEnvironment& t_env, FramedSource* source) : FramedFilter(t_env, source) {}
+    virtual ~JPEGDecodeFilter() {};
+
+private:
+    virtual void doGetNextFrame() 
+    { 
+        fInputSource->getNextFrame(fTo, fMaxSize, afterGettingFrame, this, FramedSource::handleClosure, this);
+    }
+
+    static void afterGettingFrame(void* clientData, unsigned frameSize,
+                                unsigned numTruncatedBytes,
+                                struct timeval presentationTime,
+                                unsigned durationInMicroseconds)
+    { 
+        ((JPEGDecodeFilter*)clientData)->afterGettingFrame(frameSize, numTruncatedBytes, presentationTime, durationInMicroseconds);
+    }
+
+    void afterGettingFrame( unsigned frameSize,
+                            unsigned numTruncatedBytes,
+                            struct timeval presentationTime,
+                            unsigned durationInMicroseconds)
+    {
+          afterGetting(this);
+    }
+
+protected:
+    virtual char const* MIMEtype() const { if (inputSource()) inputSource()->MIMEtype(); };
+    virtual void getAttributes() const { if (inputSource()) inputSource()->getAttributes(); };
+    virtual void doStopGettingFrames() { return FramedFilter::doStopGettingFrames(); if (inputSource() != NULL) inputSource()->stopGettingFrames(); };
+};
+
+// Define a class to hold per-stream state that we maintain throughout each stream's lifetime:
 class StreamClientState {
 public:
   StreamClientState();
@@ -120,6 +156,8 @@ public:
     static void subsessionAfterPlaying(void* clientData);
     static void subsessionByeHandler(void* clientData, char const* reason);
     static void streamTimerHandler(void* clientData);
+
+    bool ready;
 };
 
 class rs_net_device
@@ -135,7 +173,7 @@ private:
     std::string  m_ip_address;
     unsigned int m_ip_port;
 
-    rs2::software_device& m_device;
+    rs2::software_device m_device;
 
     std::thread m_rtp;
     std::thread m_dev;
@@ -144,7 +182,13 @@ private:
     char m_eventLoopWatchVariable;
 
     void doRTP();
+
     void doDevice();
+    std::shared_ptr<rs2::software_sensor> rgb;
+    std::shared_ptr<rs2::stream_profile>  sp;
+
+    std::mutex m_mutex;
+    std::condition_variable m_init_done;
 
     // bool is_device_alive;
 

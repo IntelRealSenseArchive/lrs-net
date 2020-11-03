@@ -28,20 +28,28 @@ RsSensor::RsSensor(UsageEnvironment* t_env, rs2::device t_device, rs2::sensor t_
 
 int RsSensor::open(rs2::video_stream_profile& profile)
 {
-    std::cout << "Sensor opened" << std::endl;
+    std::cout << "Sensor opened for stream : " << std::setw(15) << rs2_stream_to_string(profile.stream_type()) 
+                                               << std::setw(15) << rs2_format_to_string(profile.format())      
+                                               << std::setw(15) << profile.width() << "x" << profile.height() << "x" << profile.fps() << std::endl;    
     m_sensor.open(profile);
     return EXIT_SUCCESS;
 }
 
 int RsSensor::close()
 {
+    std::cout << "Sensor closed" << std::endl;
     m_sensor.close();
     return EXIT_SUCCESS;
 }
 
 int RsSensor::stop()
 {
-    m_sensor.stop();
+    std::cout << "Sensor stopped" << std::endl;
+    try {
+        m_sensor.stop();
+    } catch (...) {
+        std::cout << "Sensor stopped while stopped" << std::endl;
+    };
     return EXIT_SUCCESS;
 }
 

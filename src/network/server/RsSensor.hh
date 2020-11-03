@@ -23,9 +23,11 @@ public:
 
     int open(rs2::video_stream_profile& profile);
     int start(rs2::video_stream_profile& profile, rs2::frame_queue& queue);
-    int close();
     int stop();
+    int close();
 
+    bool is_streaming() { return m_sensor.get_active_streams().size() > 0; }
+    
     rs2::sensor& getRsSensor() { return m_sensor; }
 
     std::unordered_map<long long int, rs2::video_stream_profile> getStreamProfiles() { return m_streamProfiles; }

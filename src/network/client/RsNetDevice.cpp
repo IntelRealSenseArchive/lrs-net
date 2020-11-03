@@ -25,7 +25,7 @@ RSRTSPClient* RSRTSPClient::createNew(UsageEnvironment& env, char const* rtspURL
 }
 
 RSRTSPClient::RSRTSPClient(UsageEnvironment& env, char const* rtspURL)
-    : RTSPClient(env, rtspURL, 0, "", 0, -1)
+    : RTSPClient(env, rtspURL, 0, "", 0, -1), ready(false)
 {}
 
 RSRTSPClient::~RSRTSPClient() {}
@@ -126,29 +126,17 @@ void rs_net_device::doRTP() {
 
     m_rtspClient->sendDescribeCommand(RSRTSPClient::continueAfterDESCRIBE);
 
-    m_eventLoopWatchVariable = 0;
     env->taskScheduler().doEventLoop(&m_eventLoopWatchVariable);
 }
 
-void rs_net_device::doDevice() {
-    std::cout << "Software device support thread started" << std::endl;
-
-    auto rgb = m_device.add_sensor("rgbcamera");
-
-    rs2_intrinsics rgb_intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
-
-    auto p1 = rgb.add_video_stream({ RS2_STREAM_COLOR, 0,  9, 640, 480, 15, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, false);
-    auto p2 = rgb.add_video_stream({ RS2_STREAM_COLOR, 1, 19, 640, 480, 30, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true);
-    auto p3 = rgb.add_video_stream({ RS2_STREAM_COLOR, 2, 29, 640, 480, 60, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, false);
-    auto p4 = rgb.add_video_stream({ RS2_STREAM_COLOR, 3, 39, 640, 480, 90, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, false);
-
-    std::cout << "Software device streams configured" << std::endl;
+void rs_net_device::doDevice() try {
+    std::cout << "RGB sensor support thread started" << std::endl;
 
     int frame_count = 0; 
     bool prev_sensor_state = false;
     while(m_eventLoopWatchVariable == 0)
     {
-        auto user_streams = rgb.get_active_streams();
+        auto user_streams = rgb->get_active_streams();
         bool current_sensor_state = (user_streams.size() > 0);
 
         if (current_sensor_state != prev_sensor_state) // sensor state changed
@@ -157,13 +145,28 @@ void rs_net_device::doDevice() {
                 std::cout << "Sensor enabled\n";
                 for (auto stream : user_streams) {
                     rs2::video_stream_profile s = static_cast<rs2::video_stream_profile>(stream);
-                    std::cout << " Stream\t: " << std::setw(10) << rs2_stream_to_string(s.stream_type()) << "\t" << rs2_format_to_string(s.format()) << "\t" << s.width() << "x" << s.height() << "x" << s.fps() << "\n";
+                    std::cout << " Stream : " << std::setw(15) << rs2_stream_to_string(s.stream_type()) 
+                                              << std::setw(15) << rs2_format_to_string(s.format())      
+                                              << std::setw(15) << s.width() << "x" << s.height() << "x" << s.fps() << std::endl;
 
-                    m_rtspClient->startRTPSession(s);
+                    if (m_rtspClient) {
+                        if (m_rtspClient->ready) {
+                            m_rtspClient->startRTPSession(s);
+                        } else {
+                            std::cout << "Cannot start session: no session exists yet\n";
+                            continue;
+                        }
+                    } else {
+                        std::cout << "Cannot start session: no client exists yet\n";
+                        continue;
+                    }
                 }
             } else {
                 std::cout << "Sensor disabled\n";
                 // disable running RTP sessions
+                if (m_rtspClient) {
+                    m_rtspClient->shutdownStream();
+                }
             }
 
             prev_sensor_state = current_sensor_state;
@@ -171,36 +174,51 @@ void rs_net_device::doDevice() {
 
         if (current_sensor_state) 
         {
-            RSSink* sink = (RSSink*)m_rtspClient->m_scs.subsession->sink;
-            if (sink) // the session might be not created yet
+            if (m_rtspClient) 
             {
-                uint8_t* frame_raw = sink->getFrame(); // get the raw frame
-                if (frame_raw) {
-                    // send it into device
-                    rgb.on_video_frame(
-                        { 
-                            (void*)frame_raw, 
-                            [] (void* f) { delete [] (uint8_t*)f; }, 
-                            m_rtspClient->m_scs.subsession->videoWidth() * 24, 
-                            24, 
-                            (double)time(NULL), 
-                            RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
-                            ++frame_count, 
-                            p2
-                        }
-                    );
-                }        
+                if (m_rtspClient->m_scs.subsession) 
+                {
+                    RSSink* sink = (RSSink*)m_rtspClient->m_scs.subsession->sink;
+                    if (sink) // the session might be not created yet
+                    {
+                        uint8_t* frame_raw = sink->getFrame(); // get the raw frame
+                        if (frame_raw) {
+                            // send it into device
+                            rgb->on_video_frame(
+                                { 
+                                    (void*)frame_raw, 
+                                    [] (void* f) { delete [] (uint8_t*)f; }, 
+                                    m_rtspClient->m_scs.subsession->videoWidth() * 24, 
+                                    24, 
+                                    (double)time(NULL), 
+                                    RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
+                                    ++frame_count, 
+                                    *sp
+                                }
+                            );
+                        }        
+                    } else {
+                        std::cout << "No sink exists yet\n";
+                    }
+                } else {
+                    std::cout << "No subsession exists yet\n";
+                }
             } else {
-                std::cout << "No sink exist yet\n";
+                std::cout << "No client exists yet\n";
             }
         }
+        
         std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 30));
     }
 
+    std::cout << "RGB sensor support thread started" << std::endl;
+}
+catch (...) {
+    std::cout << "Device support thread crashed.\n";
 }
 
 rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_address)
-    :m_device(sw_device)
+    :m_device(sw_device), m_eventLoopWatchVariable(0), m_rtspClient(0)
 {
     // parse the parameters and set address and port
     int colon = ip_address.find(":");
@@ -216,13 +234,21 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
             std::cout << "WARNING: invalid port specified, using default";
         }
 
-
-    // this->is_device_alive = true; // to check
-
     //TODO// Obtain number of sensors and their names via HTTP (possible with corresponding SDP to use later with DESCRIBE)
 
-    m_dev = std::thread( [this] { doDevice(); } ); 
-    m_rtp = std::thread( [this] { doRTP(); } ); 
+    m_rtp = std::thread( [this](){ doRTP(); }); 
+
+    // This section constructs software device. 
+    rgb = std::make_shared<rs2::software_sensor>(m_device.add_sensor("rgbcamera"));
+
+    rs2_intrinsics rgb_intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
+
+       sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 0,  9, 640, 480, 15, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
+    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 1, 19, 640, 480, 30, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
+    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 2, 29, 640, 480, 60, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
+    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 3, 39, 640, 480, 90, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
+
+    m_dev = std::thread( [this](){ doDevice(); } ); 
 }
 
 rs_net_device::~rs_net_device() 
@@ -300,7 +326,7 @@ void RSRTSPClient::continueAfterDESCRIBE(int resultCode, char* resultString)
 
         if (m_scs.session == NULL) {
             std::cout << "Failed to create a MediaSession object from the SDP description: " << env.getResultMsg() << "\n";
-            throw std::runtime_error("Error response from server");
+            throw std::runtime_error("Malformed server response");
             break;
         } else if (!m_scs.session->hasSubsessions()) {
             std::cout << "This session has no media subsessions (i.e., no \"m=\" lines)\n";
@@ -308,6 +334,7 @@ void RSRTSPClient::continueAfterDESCRIBE(int resultCode, char* resultString)
             break;
         } else {
             std::cout << "Session created " << m_scs.session->name() << "/" << m_scs.session->sessionDescription() << "/" << m_scs.session->controlPath() << "\n";
+            ready = true;
         }
         return;
     } while (0);
@@ -331,7 +358,7 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
             (m_scs.subsession->videoHeight() == stream.height()) &&
             (m_scs.subsession->videoFPS()    == stream.fps()))
         {
-            std::cout << "Profile match for " << m_scs.subsession->controlPath() << " [" << m_scs.subsession << "]\n";
+            std::cout << "Profile match for " << m_scs.subsession->controlPath() << "\n";
 
             if(!m_scs.subsession->initiate())
             {
@@ -351,8 +378,13 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
                 {
                     std::cout << "client ports " << m_scs.subsession->clientPortNum() << "-" << m_scs.subsession->clientPortNum() + 1;
                 }
-                std::cout << ")\n";
+                std::cout << ") [" << m_scs.subsession->readSource()->name() << "]\n";
 
+#if 1 // filter
+                FramedFilter* jpeg = JPEGDecodeFilter::createNew(envir(), m_scs.subsession->readSource());
+                m_scs.subsession->addFilter(jpeg);
+                std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
+#endif
                 // Continue setting up this subsession, by sending a RTSP "SETUP" command:
                 sendSetupCommand(*m_scs.subsession, RSRTSPClient::continueAfterSETUP);
                 break;
@@ -371,8 +403,6 @@ void RSRTSPClient::continueAfterSETUP(RTSPClient* rtspClient, int resultCode, ch
 void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
 {
     UsageEnvironment& env = envir(); // alias
-
-    std::cout << "continueAfterSETUP" << " [" << m_scs.subsession << "]\n";;
     
     // Having successfully setup the subsession, create a data sink for it, and call "startPlaying()" on it.
     // (This will prepare the data sink to receive data; the actual flow of data from the client won't start happening until later,

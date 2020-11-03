@@ -58,16 +58,17 @@ FramedSource* RsServerMediaSubsession::createNewStreamSource(unsigned /*t_client
 {
     t_estBitrate = 20000; // "estBitrate" is the stream's estimated bitrate, in kbps
     std::cout << std::endl << "Creating device source" << std::endl;
-
+#if 1
+    RsDeviceSource* rs_source = RsDeviceSource::createNew(envir(), m_rsSensor, m_videoStreamProfile);
+    return JPEGEncodeFilter::createNew(envir(), rs_source);
+#else
     return RsDeviceSource::createNew(envir(), m_rsSensor, m_videoStreamProfile);
+#endif
 }
 
 RTPSink* RsServerMediaSubsession ::createNewRTPSink(Groupsock* t_rtpGroupsock, unsigned char t_rtpPayloadTypeIfDynamic, FramedSource* /*t_inputSource*/)
 {
-    /// YUYV
-    /// return RawVideoRTPSink::createNew(envir(), t_rtpGroupsock, /* 96 */ t_rtpPayloadTypeIfDynamic, 640, 480, 8 /* check RFC 4175, sec 6.1 */, "YCbCr-4:2:2" /* "YUYV" */, "BT709-2");
-
-    /// RGB
+    /// RAW
     return RawVideoRTPSink::createNew(envir(), t_rtpGroupsock, t_rtpPayloadTypeIfDynamic, 
                                         m_videoStreamProfile.width(), m_videoStreamProfile.height(), 8 /* check RFC 4175, sec 6.1 */, format_to_string(m_videoStreamProfile.format()), "BT709-2");
 }
