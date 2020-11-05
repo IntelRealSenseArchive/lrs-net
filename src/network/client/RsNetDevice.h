@@ -13,6 +13,9 @@
 #include "liveMedia.hh"
 #include "BasicUsageEnvironment.hh"
 
+#include <jpeglib.h>
+
+
 #define MAX_ACTIVE_STREAMS 4
 
 #define NUM_OF_SENSORS 2
@@ -27,19 +30,24 @@
 
 #define DEFAULT_PROFILE_COLOR_FORMAT RS2_FORMAT_RGB8 
 
+#define FRAME_SIZE 640*480*2
+
 class JPEGDecodeFilter : public FramedFilter
 {
 public:
     static JPEGDecodeFilter* createNew(UsageEnvironment& t_env, FramedSource* source) { return new JPEGDecodeFilter(t_env, source); };
 
 protected:
-    JPEGDecodeFilter(UsageEnvironment& t_env, FramedSource* source) : FramedFilter(t_env, source) {}
-    virtual ~JPEGDecodeFilter() {};
+    JPEGDecodeFilter(UsageEnvironment& t_env, FramedSource* source) : FramedFilter(t_env, source) { m_framebuf = new uint8_t[FRAME_SIZE]; }
+    virtual ~JPEGDecodeFilter() { delete[] m_framebuf; };
 
 private:
+
+    uint8_t* m_framebuf; // frame buffer for plain YUYV image from the camera
+
     virtual void doGetNextFrame() 
     { 
-        fInputSource->getNextFrame(fTo, fMaxSize, afterGettingFrame, this, FramedSource::handleClosure, this);
+        fInputSource->getNextFrame(m_framebuf, FRAME_SIZE /* fMaxSize */, afterGettingFrame, this, FramedSource::handleClosure, this);
     }
 
     static void afterGettingFrame(void* clientData, unsigned frameSize,
@@ -55,7 +63,79 @@ private:
                             struct timeval presentationTime,
                             unsigned durationInMicroseconds)
     {
-          afterGetting(this);
+        // std::cout << "Received JPEG frame of size " << frameSize << std::endl;
+
+        static uint32_t fnum = 1;
+        char fname[32] = {0};
+        FILE* f = 0;
+
+        // find the EOI marker
+        uint32_t size = frameSize;
+        // while (size < frameSize) {
+        //     if ((m_framebuf[size] == 0xFF) && (m_framebuf[size+1] == 0xD9)) break;
+        //     size++;
+        // }
+        // size++;
+
+        // find the second SOI marker
+        uint32_t i = 1;
+        while (i < size) {
+            if ((m_framebuf[i] == 0xFF) && (m_framebuf[i+1] == 0xD8)) break;
+            i++;
+        }
+
+        // memcpy(fTo, &m_framebuf[i], size - i + 1);
+        // fFrameSize = size - i + 1;
+
+        // sprintf(fname, "/tmp/in%04u", fnum++);
+        // f = fopen(fname, "w");
+        // fwrite(fTo, 1, fFrameSize, f);
+        // fclose(f);
+
+        decompress(&m_framebuf[i], size - i + 1, fTo);
+        fFrameSize = FRAME_SIZE;
+
+        // f = fopen("/tmp/mjpeg", "a+");
+        // fwrite(fTo, 1, fFrameSize, f);
+        // fclose(f);
+
+        afterGetting(this);
+    }
+
+
+    int decompress(unsigned char* in, int t_compressedSize, unsigned char* out)
+    {
+        struct jpeg_decompress_struct m_dinfo = {0};
+        struct jpeg_error_mgr m_jerr = {0};
+
+        m_dinfo.err = jpeg_std_error(&m_jerr);
+        jpeg_create_decompress(&m_dinfo);
+        m_dinfo.out_color_space = JCS_RGB;
+
+        jpeg_mem_src(&m_dinfo, in, t_compressedSize);
+        jpeg_read_header(&m_dinfo, TRUE);
+
+        std::vector<uint8_t> row(640 * 3);
+        JSAMPROW row_pointer[1];
+        row_pointer[0] = &row[0];
+
+        jpeg_start_decompress(&m_dinfo);
+        while(m_dinfo.output_scanline < m_dinfo.output_height)
+        {
+            int numLines = jpeg_read_scanlines(&m_dinfo, row_pointer, 1);
+            for(int i = 0; i < m_dinfo.output_width; i += 2)
+            {
+                out[i * 2 + 0] = row[i * 3 + 0]; // Y
+                out[i * 2 + 1] = row[i * 3 + 1]; // U
+                out[i * 2 + 2] = row[i * 3 + 3]; // Y
+                out[i * 2 + 3] = row[i * 3 + 2]; // V
+            }
+            out += m_dinfo.output_width * 2;
+        }
+        jpeg_finish_decompress(&m_dinfo);
+        jpeg_destroy_decompress(&m_dinfo);
+
+        return 0;
     }
 
 protected:

@@ -378,7 +378,7 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
                 {
                     std::cout << "client ports " << m_scs.subsession->clientPortNum() << "-" << m_scs.subsession->clientPortNum() + 1;
                 }
-                std::cout << ") [" << m_scs.subsession->readSource()->name() << "]\n";
+                std::cout << ") [" << m_scs.subsession->readSource()->name() << " : " << m_scs.subsession->readSource()->MIMEtype() << "]\n";
 
 #if 1 // filter
                 FramedFilter* jpeg = JPEGDecodeFilter::createNew(envir(), m_scs.subsession->readSource());

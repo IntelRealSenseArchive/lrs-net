@@ -66,9 +66,22 @@ FramedSource* RsServerMediaSubsession::createNewStreamSource(unsigned /*t_client
 #endif
 }
 
-RTPSink* RsServerMediaSubsession ::createNewRTPSink(Groupsock* t_rtpGroupsock, unsigned char t_rtpPayloadTypeIfDynamic, FramedSource* /*t_inputSource*/)
+RTPSink* RsServerMediaSubsession ::createNewRTPSink(Groupsock* t_rtpGroupsock, unsigned char t_rtpPayloadTypeIfDynamic, FramedSource* t_inputSource)
 {
-    /// RAW
-    return RawVideoRTPSink::createNew(envir(), t_rtpGroupsock, t_rtpPayloadTypeIfDynamic, 
-                                        m_videoStreamProfile.width(), m_videoStreamProfile.height(), 8 /* check RFC 4175, sec 6.1 */, format_to_string(m_videoStreamProfile.format()), "BT709-2");
+    std::string mime(t_inputSource->MIMEtype());
+    std::string media = mime.substr(0, mime.find('/'));
+    std::string type  = mime.substr(mime.find('/') + 1);
+    std::cout << "Source provides " << media << "/" << type << "\n";
+
+    if (type == "JPEG") {
+        /// JPEG video
+        std::cout << "Using JPEGVideoRTPSink\n";
+        return JPEGVideoRTPSink::createNew(envir(), t_rtpGroupsock);
+    } else {
+        /// RAW
+        std::cout << "Using RawVideoRTPSink\n";
+        return RawVideoRTPSink::createNew(envir(), t_rtpGroupsock, t_rtpPayloadTypeIfDynamic, 
+            m_videoStreamProfile.width(), m_videoStreamProfile.height(), 8 /* check RFC 4175, sec 6.1 */, 
+            format_to_string(m_videoStreamProfile.format()), "BT709-2");
+    }
 }
