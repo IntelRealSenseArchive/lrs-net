@@ -208,7 +208,7 @@ void rs_net_device::doDevice() try {
             }
         }
         
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / 30));
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / (sp->fps() * 2)));
     }
 
     std::cout << "RGB sensor support thread started" << std::endl;

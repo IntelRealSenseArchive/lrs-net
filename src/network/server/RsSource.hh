@@ -98,7 +98,12 @@ private:
         // fwrite(fTo, 1, fFrameSize, f);
         // fclose(f);
 #else
+        auto start = std::chrono::system_clock::now();
         fFrameSize = compress(m_framebuf_in, 640, 480, fTo);
+        auto end = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed = end-start;
+
+        std::cout << "Frame compression time " << elapsed.count() * 1000 << "ms,\tsize " << fFrameSize << "\n";
 
         // sprintf(fname, "/tmp/non%04u", fnum);
         // f = fopen(fname, "w");

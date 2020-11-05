@@ -72,6 +72,8 @@ private:
         fFrameSize = FRAME_SIZE;
 #else
 
+        auto start = std::chrono::system_clock::now();
+
         // sprintf(fname, "/tmp/in%04u", fnum++);
         // f = fopen(fname, "w");
         // fwrite(m_framebuf, 1, frameSize, f);
@@ -94,6 +96,11 @@ private:
 
         decompress(&m_framebuf[i], frameSize - i + 1, fTo);
         fFrameSize = FRAME_SIZE;
+
+        auto end = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed = end-start;
+
+        std::cout << "Frame decompression time " << elapsed.count() * 1000 << "ms,\tfrom size " << frameSize << "\n";
 
         // f = fopen("/tmp/mjpeg", "a+");
         // fwrite(fTo, 1, fFrameSize, f);
