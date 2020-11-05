@@ -68,13 +68,14 @@ private:
         static uint32_t fnum = 1;
         char fname[32] = {0};
         FILE* f = 0;
-#if 0        
+//#define USE_ABBREVIATION
+#ifdef USE_ABBREVIATION
         int fSize = compress(m_framebuf_in, 640, 480, m_framebuf_out);
 
-        sprintf(fname, "/tmp/non%04u", fnum);
-        f = fopen(fname, "w");
-        fwrite(m_framebuf_out, 1, fSize, f);
-        fclose(f);
+        // sprintf(fname, "/tmp/non%04u", fnum);
+        // f = fopen(fname, "w");
+        // fwrite(m_framebuf_out, 1, fSize, f);
+        // fclose(f);
 
         // Find the SOS (Start Of Scan) marker
         uint32_t i = 0;
@@ -92,10 +93,10 @@ private:
         fFrameSize = fSize - i;
         memcpy(fTo, &m_framebuf_out[i], fFrameSize);
         
-        sprintf(fname, "/tmp/out%04u", fnum++);
-        f = fopen(fname, "w");
-        fwrite(fTo, 1, fFrameSize, f);
-        fclose(f);
+        // sprintf(fname, "/tmp/out%04u", fnum++);
+        // f = fopen(fname, "w");
+        // fwrite(fTo, 1, fFrameSize, f);
+        // fclose(f);
 #else
         fFrameSize = compress(m_framebuf_in, 640, 480, fTo);
 
@@ -126,7 +127,7 @@ private:
         m_cinfo.in_color_space = JCS_RGB;
 
         jpeg_set_defaults(&m_cinfo);
-        jpeg_set_quality(&m_cinfo, 92, false);
+        jpeg_set_quality(&m_cinfo, 92, true);
 //         m_cinfo.write_JFIF_header = false; // no header, RTP should create one
 // std::cout << "JPEG will be generated using " << ((m_cinfo.arith_code == true) ? "arithmetic" : "Huffman") << " coding, "
 //                                              << "4:" << m_cinfo.comp_info[0].v_samp_factor << ":" << m_cinfo.comp_info[0].h_samp_factor << " subsumpling, "

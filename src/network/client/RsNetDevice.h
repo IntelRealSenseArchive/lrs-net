@@ -63,42 +63,42 @@ private:
                             struct timeval presentationTime,
                             unsigned durationInMicroseconds)
     {
-        // std::cout << "Received JPEG frame of size " << frameSize << std::endl;
-
         static uint32_t fnum = 1;
         char fname[32] = {0};
         FILE* f = 0;
+//#define USE_ABBREVIATION
+#ifdef USE_ABBREVIATION
+        decompress(m_framebuf, frameSize, fTo);
+        fFrameSize = FRAME_SIZE;
+#else
 
-        // find the EOI marker
-        uint32_t size = frameSize;
-        // while (size < frameSize) {
-        //     if ((m_framebuf[size] == 0xFF) && (m_framebuf[size+1] == 0xD9)) break;
-        //     size++;
-        // }
-        // size++;
+        // sprintf(fname, "/tmp/in%04u", fnum++);
+        // f = fopen(fname, "w");
+        // fwrite(m_framebuf, 1, frameSize, f);
+        // fclose(f);
 
-        // find the second SOI marker
+        // find the second SOI marker to use the original headers
         uint32_t i = 1;
-        while (i < size) {
+        while (i < frameSize) {
             if ((m_framebuf[i] == 0xFF) && (m_framebuf[i+1] == 0xD8)) break;
             i++;
         }
 
-        // memcpy(fTo, &m_framebuf[i], size - i + 1);
-        // fFrameSize = size - i + 1;
+        // memcpy(fTo, &m_framebuf[i], frameSize - i + 1);
+        // fFrameSize = frameSize - i + 1;
 
         // sprintf(fname, "/tmp/in%04u", fnum++);
         // f = fopen(fname, "w");
         // fwrite(fTo, 1, fFrameSize, f);
         // fclose(f);
 
-        decompress(&m_framebuf[i], size - i + 1, fTo);
+        decompress(&m_framebuf[i], frameSize - i + 1, fTo);
         fFrameSize = FRAME_SIZE;
 
         // f = fopen("/tmp/mjpeg", "a+");
         // fwrite(fTo, 1, fFrameSize, f);
         // fclose(f);
-
+#endif
         afterGetting(this);
     }
 
