@@ -30,7 +30,7 @@ int main(int argc, char * argv[]) try
     }
 
     cfg.enable_device("555555555555");
-    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_YUYV, 15);
+    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_YUYV, 60);
 
     rs2::pipeline_profile pp = pipe.start(cfg);
     std::vector<rs2::stream_profile> profiles = pp.get_streams();

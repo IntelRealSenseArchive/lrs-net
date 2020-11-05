@@ -126,6 +126,7 @@ private:
         m_cinfo.in_color_space = JCS_RGB;
 
         jpeg_set_defaults(&m_cinfo);
+        jpeg_set_quality(&m_cinfo, 92, false);
 //         m_cinfo.write_JFIF_header = false; // no header, RTP should create one
 // std::cout << "JPEG will be generated using " << ((m_cinfo.arith_code == true) ? "arithmetic" : "Huffman") << " coding, "
 //                                              << "4:" << m_cinfo.comp_info[0].v_samp_factor << ":" << m_cinfo.comp_info[0].h_samp_factor << " subsumpling, "

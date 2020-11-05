@@ -110,7 +110,7 @@ private:
 
         m_dinfo.err = jpeg_std_error(&m_jerr);
         jpeg_create_decompress(&m_dinfo);
-        m_dinfo.out_color_space = JCS_RGB;
+        // m_dinfo.out_color_space = JCS_UNKNOWN;
 
         jpeg_mem_src(&m_dinfo, in, t_compressedSize);
         jpeg_read_header(&m_dinfo, TRUE);

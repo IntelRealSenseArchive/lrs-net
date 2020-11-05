@@ -243,10 +243,10 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
 
     rs2_intrinsics rgb_intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
 
-       sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 0,  9, 640, 480, 15, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 1, 19, 640, 480, 30, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 2, 29, 640, 480, 60, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 3, 39, 640, 480, 90, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
+    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 0,  9, 640, 480,  6, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
+    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 1, 19, 640, 480, 15, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
+    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 2, 29, 640, 480, 30, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
+       sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 3, 39, 640, 480, 60, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
 
     m_dev = std::thread( [this](){ doDevice(); } ); 
 }
