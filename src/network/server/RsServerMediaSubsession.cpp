@@ -60,7 +60,7 @@ FramedSource* RsServerMediaSubsession::createNewStreamSource(unsigned /*t_client
     std::cout << std::endl << "Creating device source" << std::endl;
 #if 1
     RsDeviceSource* rs_source = RsDeviceSource::createNew(envir(), m_rsSensor, m_videoStreamProfile);
-    return JPEGEncodeFilter::createNew(envir(), rs_source);
+    return JPEG2000EncodeFilter::createNew(envir(), rs_source);
 #else
     return RsDeviceSource::createNew(envir(), m_rsSensor, m_videoStreamProfile);
 #endif
@@ -73,7 +73,11 @@ RTPSink* RsServerMediaSubsession ::createNewRTPSink(Groupsock* t_rtpGroupsock, u
     std::string type  = mime.substr(mime.find('/') + 1);
     std::cout << "Source provides " << media << "/" << type << "\n";
 
-    if (type == "JPEG") {
+    if (type == "JPEG2000") {
+        /// JPEG2000 video
+        std::cout << "Using JPEG2000VideoRTPSink\n";
+        return JPEG2000VideoRTPSink::createNew(envir(), t_rtpGroupsock);
+    } else if (type == "JPEG") {
         /// JPEG video
         std::cout << "Using JPEGVideoRTPSink\n";
         return JPEGVideoRTPSink::createNew(envir(), t_rtpGroupsock);

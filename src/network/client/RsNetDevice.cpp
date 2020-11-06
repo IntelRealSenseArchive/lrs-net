@@ -380,9 +380,13 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
                 }
                 std::cout << ") [" << m_scs.subsession->readSource()->name() << " : " << m_scs.subsession->readSource()->MIMEtype() << "]\n";
 
-#if 1 // filter
+#if 0 // JPEG filter 
                 FramedFilter* jpeg = JPEGDecodeFilter::createNew(envir(), m_scs.subsession->readSource());
                 m_scs.subsession->addFilter(jpeg);
+                std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
+#else                
+                FramedFilter* jpeg2000 = JPEG2000DecodeFilter::createNew(envir(), m_scs.subsession->readSource());
+                m_scs.subsession->addFilter(jpeg2000);
                 std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
 #endif
                 // Continue setting up this subsession, by sending a RTSP "SETUP" command:

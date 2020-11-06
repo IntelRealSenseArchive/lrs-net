@@ -95,6 +95,10 @@ add_dependencies(${PROJECT_NAME}
     libjpeg-turbo
 )
 
+add_dependencies(${PROJECT_NAME} 
+    openjpeg
+)
+
 set(REALSENSE_NET_PUBLIC_HEADERS
     ${CMAKE_SOURCE_DIR}/include/librealsense2-net/rs_net.h
     ${CMAKE_SOURCE_DIR}/include/librealsense2-net/rs_net.hpp
@@ -115,6 +119,7 @@ include_directories(${PROJECT_NAME}
     ${CMAKE_SOURCE_DIR}/third-party/tclap/include
 
     ${CMAKE_BINARY_DIR}/libjpeg-turbo/include
+    ${CMAKE_BINARY_DIR}/openjpeg/include/openjpeg-2.3
 
     ${LZ4_DIR}
 
@@ -151,12 +156,13 @@ if(WIN32)
     set(JPGLIB "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/turbojpeg-static.lib")
 else(WIN32)
     set(JPGLIB "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/libturbojpeg.a")
+    set(OPENJPEGLIB "${CMAKE_BINARY_DIR}/openjpeg/lib/libopenjp2.a")
 endif(WIN32)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
 
 target_link_libraries(${PROJECT_NAME} 
-    PRIVATE ${WINLIB} ${JPGLIB} realsense2 Threads::Threads
+    PRIVATE ${WINLIB} ${JPGLIB} ${OPENJPEGLIB} realsense2 Threads::Threads
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER Library)
