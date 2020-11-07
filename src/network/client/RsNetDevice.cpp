@@ -134,13 +134,12 @@ void rs_net_device::doDevice() try {
 
     int frame_count = 0; 
     bool prev_sensor_state = false;
-    while(m_eventLoopWatchVariable == 0)
-    {
+    while (m_eventLoopWatchVariable == 0) {
         auto user_streams = rgb->get_active_streams();
         bool current_sensor_state = (user_streams.size() > 0);
 
-        if (current_sensor_state != prev_sensor_state) // sensor state changed
-        {
+        if (current_sensor_state != prev_sensor_state) {
+            // sensor state changed
             if (current_sensor_state) {
                 std::cout << "Sensor enabled\n";
                 for (auto stream : user_streams) {
@@ -172,15 +171,11 @@ void rs_net_device::doDevice() try {
             prev_sensor_state = current_sensor_state;
         }
 
-        if (current_sensor_state) 
-        {
-            if (m_rtspClient) 
-            {
-                if (m_rtspClient->m_scs.subsession) 
-                {
+        if (current_sensor_state)  {
+            if (m_rtspClient)  {
+                if (m_rtspClient->m_scs.subsession) {
                     RSSink* sink = (RSSink*)m_rtspClient->m_scs.subsession->sink;
-                    if (sink) // the session might be not created yet
-                    {
+                    if (sink) { // the session might be not created yet
                         uint8_t* frame_raw = sink->getFrame(); // get the raw frame
                         if (frame_raw) {
                             // send it into device
@@ -197,23 +192,16 @@ void rs_net_device::doDevice() try {
                                 }
                             );
                         }        
-                    } else {
-                        std::cout << "No sink exists yet\n";
-                    }
-                } else {
-                    std::cout << "No subsession exists yet\n";
-                }
-            } else {
-                std::cout << "No client exists yet\n";
-            }
+                    } else std::cout << "No sink exists yet\n";
+                } else std::cout << "No subsession exists yet\n";
+            } else std::cout << "No client exists yet\n";
         }
         
         std::this_thread::sleep_for(std::chrono::milliseconds(1000 / (sp->fps() * 2)));
     }
 
     std::cout << "RGB sensor support thread started" << std::endl;
-}
-catch (...) {
+} catch (...) {
     std::cout << "Device support thread crashed.\n";
 }
 

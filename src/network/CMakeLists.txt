@@ -32,6 +32,9 @@ set(RS_COMMON_NET_CPP
     ./common/RsCommon.h
     ./common/RsUsageEnvironment.cpp
     ./common/RsUsageEnvironment.h
+
+    ./common/jpeg2k.h
+    ./common/jpeg2k.cpp
 )
 
 set(RS_COMP_NET_CPP

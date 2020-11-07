@@ -11,23 +11,19 @@
 #define CAPACITY 100
 
 const char* format_to_string(rs2_format f) {
-    char * fmt = "N/A";
-
     switch (f) {
-        case RS2_FORMAT_Z16   :  fmt = "Z16";         break; /**< 16-bit linear depth values. The depth is meters is equal to depth scale * pixel value. */
-        case RS2_FORMAT_YUYV  :  fmt = "YCbCr-4:2:2"; break; /**< 32-bit y0, u, y1, v data for every two pixels. Similar to YUV422 but packed in a different order - https://en.wikipedia.org/wiki/YUV */
-        case RS2_FORMAT_UYVY  :  fmt = "YCbCr-4:2:2"; break; /**< Similar to the standard YUYV pixel format, but packed in a different order */
-        case RS2_FORMAT_RGB8  :  fmt = "RGB";         break; /**< 8-bit red, green and blue channels */
-        case RS2_FORMAT_BGR8  :  fmt = "BGR";         break; /**< 8-bit blue, green, and red channels -- suitable for OpenCV */
-        case RS2_FORMAT_RGBA8 :  fmt = "RGBA";        break; /**< 8-bit red, green and blue channels + constant alpha channel equal to FF */
-        case RS2_FORMAT_BGRA8 :  fmt = "BGR";         break; /**< 8-bit blue, green, and red channels + constant alpha channel equal to FF */
-        case RS2_FORMAT_Y8    :  fmt = "Y8";          break; /**< 8-bit per-pixel grayscale image */
-        case RS2_FORMAT_Y16   :  fmt = "Y16";         break; /**< 16-bit per-pixel grayscale image */
+        case RS2_FORMAT_Z16   :  return "Z16";          /**< 16-bit linear depth values. The depth is meters is equal to depth scale * pixel value. */
+        case RS2_FORMAT_YUYV  :  return "YCbCr-4:2:2";  /**< 32-bit y0, u, y1, v data for every two pixels. Similar to YUV422 but packed in a different order - https://en.wikipedia.org/wiki/YUV */
+        case RS2_FORMAT_UYVY  :  return "YCbCr-4:2:2";  /**< Similar to the standard YUYV pixel format, but packed in a different order */
+        case RS2_FORMAT_RGB8  :  return "RGB";          /**< 8-bit red, green and blue channels */
+        case RS2_FORMAT_BGR8  :  return "BGR";          /**< 8-bit blue, green, and red channels -- suitable for OpenCV */
+        case RS2_FORMAT_RGBA8 :  return "RGBA";         /**< 8-bit red, green and blue channels + constant alpha channel equal to FF */
+        case RS2_FORMAT_BGRA8 :  return "BGR";          /**< 8-bit blue, green, and red channels + constant alpha channel equal to FF */
+        case RS2_FORMAT_Y8    :  return "Y8";           /**< 8-bit per-pixel grayscale image */
+        case RS2_FORMAT_Y16   :  return "Y16";          /**< 16-bit per-pixel grayscale image */
     }
 
-    std::cout << "Format conversion: " << f << " => " << std::string(fmt) << std::endl;
-
-    return fmt;
+    return "N/A";
 }
 
 RsServerMediaSubsession* RsServerMediaSubsession::createNew(UsageEnvironment& t_env, RsSensor& sensor, rs2::video_stream_profile& t_videoStreamProfile)
