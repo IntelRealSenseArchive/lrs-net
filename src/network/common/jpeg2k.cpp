@@ -3,10 +3,12 @@
 #include <string.h>
 
 #include <iostream>
+#include <chrono>
 
 #include "jpeg2k.h"
 
 // #define OPENJPEG_DEBUG
+#define THREAD_NUM 2
 
 //// mem_stream implementation ///////////////////////////////////////////
 
@@ -74,7 +76,8 @@ int jpeg2k::compress(uint8_t* yuyv, uint32_t width, uint32_t height, uint8_t* j2
         cmptparm[i].prec = 8;
         cmptparm[i].bpp = 8;
         cmptparm[i].sgnd = 0;
-        cmptparm[i].dx = sub_dx;
+        if (i) cmptparm[i].dx = sub_dx * 2;
+        else   cmptparm[i].dx = sub_dx;
         cmptparm[i].dy = sub_dy;
         cmptparm[i].w = width;
         cmptparm[i].h = height;
@@ -83,15 +86,11 @@ int jpeg2k::compress(uint8_t* yuyv, uint32_t width, uint32_t height, uint8_t* j2
     if (image) {
         for(int y = 0; y < height; y++) {
             for(int x = 0; x < width; x++) {
-                if(x % 2 == 0) {
-                    image->comps[0].data[y * width + x] = yuyv[y * width * 2 + x * 2 + 0]; // Y
-                    image->comps[1].data[y * width + x] = yuyv[y * width * 2 + x * 2 + 1]; // U
-                    image->comps[2].data[y * width + x] = yuyv[y * width * 2 + x * 2 + 3]; // V
-                } else {
-                    image->comps[0].data[y * width + x] = yuyv[y * width * 2 + x * 2 + 0]; // Y
-                    image->comps[1].data[y * width + x] = yuyv[y * width * 2 + x * 2 - 1]; // U
-                    image->comps[2].data[y * width + x] = yuyv[y * width * 2 + x * 2 + 1]; // V
-                }
+                image->comps[0].data[y * width + x] = yuyv[y * width * 2 + x * 2 + 0]; // Y
+            }
+            for(int x = 0; x < width / 2; x++) {
+                image->comps[1].data[y * (width/2) + x] = yuyv[y * width * 2 + x * 4 + 1]; // U
+                image->comps[2].data[y * (width/2) + x] = yuyv[y * width * 2 + x * 4 + 3]; // V
             }
         }
 
@@ -122,9 +121,19 @@ int jpeg2k::compress(uint8_t* yuyv, uint32_t width, uint32_t height, uint8_t* j2
                     opj_stream_set_skip_function(l_stream, (opj_stream_skip_fn)mem_stream::skip_cb);
                     opj_stream_set_seek_function(l_stream, (opj_stream_seek_fn)mem_stream::seek_cb);
 
+                    opj_codec_set_threads(l_codec, THREAD_NUM);
+
+#ifdef OPENJPEG_DEBUG            
+                    auto start = std::chrono::system_clock::now();
+#endif            
                     if(opj_start_compress(l_codec, image, l_stream)) {
                         if(opj_encode(l_codec, l_stream)) {
                             if(opj_end_compress(l_codec, l_stream)) {
+#ifdef OPENJPEG_DEBUG            
+                                auto end = std::chrono::system_clock::now();
+                                std::chrono::duration<double> elapsed = end-start;
+                                std::cout << "Pure compression time " << elapsed.count() * 1000 << " ms\n";
+#endif            
                                 ret = ms.size(); // Success
                             } else print("opj_end_compress failed", NULL);
                         } else print("opj_encode failed", NULL);
@@ -166,26 +175,31 @@ int jpeg2k::decompress(uint8_t* j2k, uint32_t size, uint8_t* yuyv)
             opj_stream_set_skip_function(l_stream, (opj_stream_skip_fn)mem_stream::skip_cb);
             opj_stream_set_seek_function(l_stream, (opj_stream_seek_fn)mem_stream::seek_cb);
 
+            opj_codec_set_threads(d_codec, THREAD_NUM);
+
             if(opj_read_header(l_stream, d_codec, &image)) {
+#ifdef OPENJPEG_DEBUG            
+                auto start = std::chrono::system_clock::now();
+#endif
                 if(opj_decode(d_codec, l_stream, image)) {
                     if(opj_end_decompress(d_codec, l_stream)) {
+#ifdef OPENJPEG_DEBUG            
+                        auto end = std::chrono::system_clock::now();
+                        std::chrono::duration<double> elapsed = end-start;
+                        std::cout << "Pure decompression time " << elapsed.count() * 1000 << " ms\n";
+#endif
                         // YUV planar image
                         ret = (image->x1 - image->x0) * (image->y1 - image->y0) * image->numcomps;
-
                         // convert image to the YUYV interlaced image
                         int width = image->x1 - image->x0;
                         int height = image->y1 - image->y0;
                         for(int y = 0; y < height; y++) {
                             for(int x = 0; x < width; x++) {
-                                if(x % 2 == 0) {
-                                    yuyv[y * width * 2 + x * 2 + 0] = image->comps[0].data[y * width + x]; // Y
-                                    yuyv[y * width * 2 + x * 2 + 1] = image->comps[1].data[y * width + x]; // U
-                                    yuyv[y * width * 2 + x * 2 + 3] = image->comps[2].data[y * width + x]; // V
-                                } else {
-                                    yuyv[y * width * 2 + x * 2 + 0] = image->comps[0].data[y * width + x]; // Y
-                                    // image->comps[1].data[y * width + x] = yuyv[y * width * 2 + x * 2 - 1]; // U
-                                    // image->comps[2].data[y * width + x] = yuyv[y * width * 2 + x * 2 + 1]; // V
-                                }
+                                yuyv[y * width * 2 + x * 2 + 0] = image->comps[0].data[y * width + x]; // Y
+                            }
+                            for(int x = 0; x < width/2; x++) {
+                                yuyv[y * width * 2 + x * 4 + 1] = image->comps[1].data[y * (width/2) + x]; // U
+                                yuyv[y * width * 2 + x * 4 + 3] = image->comps[2].data[y * (width/2) + x]; // V
                             }
                         }
                         ret = FRAME_SIZE;
