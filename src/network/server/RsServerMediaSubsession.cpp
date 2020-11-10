@@ -6,6 +6,8 @@
 #include "RsServerMediaSession.h"
 #include "RsSimpleRTPSink.h"
 
+#include "JPEG2000EncodeFilter.h"
+
 #include <iostream>
 
 #define CAPACITY 100

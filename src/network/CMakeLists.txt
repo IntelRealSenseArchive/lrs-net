@@ -26,6 +26,11 @@ set(RS_CLIENT_NET_CPP
 #    ./client/RsRtspClient.h
 #    ./client/RsSink.cpp
 #    ./client/RsSink.h
+
+    ./common/JPEGDecodeFilter.h
+    ./common/JPEGDecodeFilter.cpp
+    ./common/JPEG2000DecodeFilter.h
+    ./common/JPEG2000DecodeFilter.cpp
 )
 
 set(RS_COMMON_NET_CPP
@@ -35,6 +40,9 @@ set(RS_COMMON_NET_CPP
 
     ./common/jpeg2k.h
     ./common/jpeg2k.cpp
+
+    ./common/jpeg.h
+    ./common/jpeg.cpp
 )
 
 set(RS_COMP_NET_CPP
@@ -68,6 +76,11 @@ set(RS_SERVER_NET_CPP
 #    ./server/RsSimpleRTPSink.h
     ./server/RsSource.cpp
     ./server/RsSource.hh
+
+    ./common/JPEGEncodeFilter.h
+    ./common/JPEGEncodeFilter.cpp
+    ./common/JPEG2000EncodeFilter.h
+    ./common/JPEG2000EncodeFilter.cpp
 )
 
 set(REALSENSE_NET_CPP 

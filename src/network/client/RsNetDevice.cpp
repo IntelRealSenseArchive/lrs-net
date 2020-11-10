@@ -17,6 +17,8 @@
 #include "liveMedia.hh"
 #include "BasicUsageEnvironment.hh"
 
+#include "JPEG2000DecodeFilter.h"
+
 using namespace std::placeholders;
 
 RSRTSPClient* RSRTSPClient::createNew(UsageEnvironment& env, char const* rtspURL)
