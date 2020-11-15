@@ -143,10 +143,16 @@ private:
     std::thread m_rtp;
     std::thread m_dev;
 
+    pthread_t m_th_rtp;
+    pthread_attr_t m_th_rtp_attr;
+
+    pthread_t m_th_dev;
+    pthread_attr_t m_th_dev_attr;
+    
     RSRTSPClient* m_rtspClient;
     char m_eventLoopWatchVariable;
 
-    void doRTP();
+    void* doRTP();
 
     void doDevice();
     std::shared_ptr<rs2::software_sensor> rgb;

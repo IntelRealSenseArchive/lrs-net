@@ -7,6 +7,9 @@
 #include "RsSimpleRTPSink.h"
 
 #include "JPEG2000EncodeFilter.h"
+#include "JPEGEncodeFilter.h"
+#include "LZ4EncodeFilter.h"
+#include "LZ4VideoRTPSink.h"
 
 #include <iostream>
 
@@ -56,9 +59,18 @@ FramedSource* RsServerMediaSubsession::createNewStreamSource(unsigned /*t_client
 {
     t_estBitrate = 20000; // "estBitrate" is the stream's estimated bitrate, in kbps
     std::cout << std::endl << "Creating device source" << std::endl;
-#if 1
+
+#define ENCODER_LZ4
+
+#if   defined(ENCODER_JPEG200)
     RsDeviceSource* rs_source = RsDeviceSource::createNew(envir(), m_rsSensor, m_videoStreamProfile);
     return JPEG2000EncodeFilter::createNew(envir(), rs_source);
+#elif defined(ENCODER_JPEG)
+    RsDeviceSource* rs_source = RsDeviceSource::createNew(envir(), m_rsSensor, m_videoStreamProfile);
+    return JPEGEncodeFilter::createNew(envir(), rs_source);
+#elif defined(ENCODER_LZ4)
+    RsDeviceSource* rs_source = RsDeviceSource::createNew(envir(), m_rsSensor, m_videoStreamProfile);
+    return LZ4EncodeFilter::createNew(envir(), rs_source);
 #else
     return RsDeviceSource::createNew(envir(), m_rsSensor, m_videoStreamProfile);
 #endif
@@ -79,6 +91,14 @@ RTPSink* RsServerMediaSubsession ::createNewRTPSink(Groupsock* t_rtpGroupsock, u
         /// JPEG video
         std::cout << "Using JPEGVideoRTPSink\n";
         return JPEGVideoRTPSink::createNew(envir(), t_rtpGroupsock);
+    } else if (type == "LZ4") {
+        /// LZ4 compressed video
+        // std::cout << "Should use LZ4VideoRTPSink, using RawVideoRTPSink now\n";
+        // return RawVideoRTPSink::createNew(envir(), t_rtpGroupsock, t_rtpPayloadTypeIfDynamic, 
+        //     m_videoStreamProfile.width(), m_videoStreamProfile.height(), 8 /* check RFC 4175, sec 6.1 */, 
+        //     format_to_string(m_videoStreamProfile.format()), "BT709-2");
+        std::cout << "Using LZ4VideoRTPSink\n";
+        return LZ4VideoRTPSink::createNew(envir(), t_rtpGroupsock);
     } else {
         /// RAW
         std::cout << "Using RawVideoRTPSink\n";

@@ -18,6 +18,8 @@
 #include "BasicUsageEnvironment.hh"
 
 #include "JPEG2000DecodeFilter.h"
+#include "JPEGDecodeFilter.h"
+#include "LZ4DecodeFilter.h"
 
 using namespace std::placeholders;
 
@@ -105,8 +107,8 @@ void rs_net_device::stop_sensor_streams(int sensor_index)
 }
 */
 
-void rs_net_device::doRTP() {
-    std::cout << "RTP support thread started" << std::endl;
+void* rs_net_device::doRTP() {
+    std::cout << "RTP support thread started: " << pthread_self() << std::endl;
 
     std::string rtspURL;
     rtspURL.append("rtsp://").append(m_ip_address).append(":").append(std::to_string(m_ip_port)).append("/rgbcamera");
@@ -195,7 +197,7 @@ void rs_net_device::doDevice() try {
                             );
                         }        
                     } else std::cout << "No sink exists yet\n";
-                } else std::cout << "No subsession exists yet\n";
+                } // else std::cout << "No subsession exists yet\n";
             } else std::cout << "No client exists yet\n";
         }
         
@@ -225,6 +227,18 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
         }
 
     //TODO// Obtain number of sensors and their names via HTTP (possible with corresponding SDP to use later with DESCRIBE)
+
+    // typedef void * (*THREADFUNCPTR)(void *);
+    // if (pthread_attr_init(&m_th_rtp_attr) == 0) {
+    //     if (pthread_attr_setschedpolicy(&m_th_rtp_attr, SCHED_RR) == 0) {
+    //         struct sched_param sch_param = {99};
+    //         if (pthread_attr_setschedparam(&m_th_rtp_attr, &sch_param) == 0) {
+    //             if (pthread_create(&m_th_rtp, &m_th_rtp_attr, (THREADFUNCPTR) &rs_net_device::doRTP, this) == 0) {
+    //                 std::cout << "RTP thread created\n";
+    //             } else std::cout << "Cannot create thread\n";
+    //         } else std::cout << "Cannot set scheduling priority\n";
+    //     } else std::cout << "Cannot set scheduling policy\n";
+    // } else std::cout << "Cannot initialize attributes\n";
 
     m_rtp = std::thread( [this](){ doRTP(); }); 
 
@@ -308,7 +322,7 @@ void RSRTSPClient::continueAfterDESCRIBE(int resultCode, char* resultString)
         }
 
         char* const sdpDescription = resultString;
-        // std::cout << "Got a SDP description:\n" << sdpDescription << "\n";
+        std::cout << "Got a SDP description:\n" << sdpDescription << "\n";
 
         // Create a media session object from this SDP description:
         m_scs.session = MediaSession::createNew(env, sdpDescription);
@@ -350,7 +364,12 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
         {
             std::cout << "Profile match for " << m_scs.subsession->controlPath() << "\n";
 
-            if(!m_scs.subsession->initiate())
+            int useSpecialRTPoffset = -1; // for supported codecs
+            if (strcmp(m_scs.subsession->codecName(), "LZ4") == 0) {
+                useSpecialRTPoffset = 4;
+            }
+
+            if(!m_scs.subsession->initiate(useSpecialRTPoffset))
             {
                 std::cout << "Failed to initiate the \"" << m_scs.subsession->controlPath() << "\" subsession: " << envir().getResultMsg() << "\n";
             }
@@ -370,15 +389,22 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
                 }
                 std::cout << ") [" << m_scs.subsession->readSource()->name() << " : " << m_scs.subsession->readSource()->MIMEtype() << "]\n";
 
-#if 0 // JPEG filter 
+#define ENCODER_LZ4
+
+#if   defined(ENCODER_JPEG) // JPEG filter 
                 FramedFilter* jpeg = JPEGDecodeFilter::createNew(envir(), m_scs.subsession->readSource());
                 m_scs.subsession->addFilter(jpeg);
                 std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
-#else                
+#elif defined(ENCODER_JPEG2000) // JPEG2000 filter 
                 FramedFilter* jpeg2000 = JPEG2000DecodeFilter::createNew(envir(), m_scs.subsession->readSource());
                 m_scs.subsession->addFilter(jpeg2000);
                 std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
+#elif defined(ENCODER_LZ4) // LZ4 filter 
+                FramedFilter* lz4 = LZ4DecodeFilter::createNew(envir(), m_scs.subsession->readSource());
+                m_scs.subsession->addFilter(lz4);
+                std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
 #endif
+
                 // Continue setting up this subsession, by sending a RTSP "SETUP" command:
                 sendSetupCommand(*m_scs.subsession, RSRTSPClient::continueAfterSETUP);
                 break;

@@ -27,6 +27,8 @@ set(RS_CLIENT_NET_CPP
 #    ./client/RsSink.cpp
 #    ./client/RsSink.h
 
+    ./common/LZ4DecodeFilter.h
+    ./common/LZ4DecodeFilter.cpp
     ./common/JPEGDecodeFilter.h
     ./common/JPEGDecodeFilter.cpp
     ./common/JPEG2000DecodeFilter.h
@@ -43,6 +45,9 @@ set(RS_COMMON_NET_CPP
 
     ./common/jpeg.h
     ./common/jpeg.cpp
+
+    ./common/if_lz4.h
+    ./common/if_lz4.cpp
 )
 
 set(RS_COMP_NET_CPP
@@ -77,10 +82,15 @@ set(RS_SERVER_NET_CPP
     ./server/RsSource.cpp
     ./server/RsSource.hh
 
+    ./common/LZ4EncodeFilter.h
+    ./common/LZ4EncodeFilter.cpp
     ./common/JPEGEncodeFilter.h
     ./common/JPEGEncodeFilter.cpp
     ./common/JPEG2000EncodeFilter.h
     ./common/JPEG2000EncodeFilter.cpp
+
+    ./common/LZ4VideoRTPSink.h
+    ./common/LZ4VideoRTPSink.cpp
 )
 
 set(REALSENSE_NET_CPP 
@@ -137,6 +147,7 @@ include_directories(${PROJECT_NAME}
     ${CMAKE_BINARY_DIR}/libjpeg-turbo/include
     ${CMAKE_BINARY_DIR}/openjpeg/include/openjpeg-2.3
 
+    ${CMAKE_BINARY_DIR}/zstd/include
     ${LZ4_DIR}
 
     ${LIVE}/groupsock/include
@@ -171,14 +182,15 @@ if(WIN32)
     set(WINLIB Ws2_32.lib)
     set(JPGLIB "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/turbojpeg-static.lib")
 else(WIN32)
-    set(JPGLIB "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/libturbojpeg.a")
+    set(JPGLIB      "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/libturbojpeg.a")
     set(OPENJPEGLIB "${CMAKE_BINARY_DIR}/openjpeg/lib/libopenjp2.a")
+    set(ZSTDLIB     "${CMAKE_BINARY_DIR}/zstd/lib/libzstd.a")
 endif(WIN32)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
 
 target_link_libraries(${PROJECT_NAME} 
-    PRIVATE ${WINLIB} ${JPGLIB} ${OPENJPEGLIB} realsense2 Threads::Threads
+    PRIVATE ${WINLIB} ${JPGLIB} ${OPENJPEGLIB} ${ZSTDLIB} realsense2 Threads::Threads
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER Library)
