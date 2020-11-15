@@ -13,7 +13,8 @@ void LZ4DecodeFilter::afterGettingFrame( unsigned frameSize,
     FILE* f = 0;
 
     fFrameSize = 0;
-    size_t size = 0;
+    int size = 0;
+    int s = 0;
 
     // sprintf(fname, "/tmp/rs/in%04u.j2k", fnum++);
     // f = fopen(fname, "wb");
@@ -22,39 +23,45 @@ void LZ4DecodeFilter::afterGettingFrame( unsigned frameSize,
 
     sprintf(fname, "/tmp/rs/out.yuv");
 
-    if (fOffset == 0) start = std::chrono::system_clock::now();
+    auto start = std::chrono::system_clock::now();
 
-    if (frameSize == (sizeof(uint16_t) * 2)) {
-        // header received - new frame arrived
-        if (fOffset) {
-            auto end = std::chrono::system_clock::now();
-            std::chrono::duration<double> elapsed = end-start;
-
-            std::cout << "Frame decompression time " << elapsed.count() * 1000 << " ms, size " << fOffset << "\n";
-
-            memcpy(fTo, m_framebuf_out, fOffset);
-            fFrameSize = fOffset;
-
-            // std::cout << "Frame received size " << fFrameSize << "\n";
-
-            // if (fFrameSize == FRAME_SIZE) {
-            //     f = fopen(fname, "ab");
-            //     fwrite(m_framebuf_out, 1, fFrameSize, f);
-            //     fclose(f);
-            // }
-
-            fOffset = 0; 
-
-            afterGetting(this);
-            return;
+    // int ret = ZSTD_decompress((void*)m_framebuf, FRAME_SIZE * 10, (void*)m_framebuf_out, fOffset);
+    int ret = ZSTD_decompress((void*)fTo, FRAME_SIZE, (void*)m_framebuf_in, frameSize);
+    if (ZSTD_isError(ret)) {
+        switch (ZSTD_getErrorCode(ret)) {
+        case ZSTD_error_no_error:                           std::cout << "ERROR: No error"                              << std::endl; break;
+        case ZSTD_error_GENERIC:                            std::cout << "ERROR: Generic"                               << std::endl; break;
+        case ZSTD_error_prefix_unknown:                     std::cout << "ERROR: Prefix unknown"                        << std::endl; break;
+        case ZSTD_error_version_unsupported:                std::cout << "ERROR: Version unsupported"                   << std::endl; break;
+        case ZSTD_error_frameParameter_unsupported:         std::cout << "ERROR: Frame parameter unsupported"           << std::endl; break;
+        case ZSTD_error_frameParameter_windowTooLarge:      std::cout << "ERROR: Frame parameter window too large"      << std::endl; break;
+        case ZSTD_error_corruption_detected:                std::cout << "ERROR: Corruption detected"                   << std::endl; break;
+        case ZSTD_error_checksum_wrong:                     std::cout << "ERROR: Wrong checksum"                        << std::endl; break;
+        case ZSTD_error_dictionary_corrupted:               std::cout << "ERROR: Dictionary corrupted"                  << std::endl; break;
+        case ZSTD_error_dictionary_wrong:                   std::cout << "ERROR: Dictionary wrong"                      << std::endl; break;
+        case ZSTD_error_dictionaryCreation_failed:          std::cout << "ERROR: Dictionary creation failed"            << std::endl; break;
+        case ZSTD_error_parameter_unsupported:              std::cout << "ERROR: Paramether unsupported"    << std::endl; break;
+        case ZSTD_error_parameter_outOfBound:               std::cout << "ERROR: Paramether out of bound"    << std::endl; break;
+        case ZSTD_error_tableLog_tooLarge:                  std::cout << "ERROR: Table log too large"                   << std::endl; break;
+        case ZSTD_error_maxSymbolValue_tooLarge:            std::cout << "ERROR: Max symbol value is too large"         << std::endl; break;
+        case ZSTD_error_maxSymbolValue_tooSmall:            std::cout << "ERROR: Max symbol value is too small"         << std::endl; break;
+        case ZSTD_error_stage_wrong:                        std::cout << "ERROR: Wrong stage"                           << std::endl; break;
+        case ZSTD_error_init_missing:                       std::cout << "ERROR: Init missing"                          << std::endl; break;
+        case ZSTD_error_memory_allocation:                  std::cout << "ERROR: Memory allocation"                     << std::endl; break;
+        case ZSTD_error_workSpace_tooSmall:                 std::cout << "ERROR: Warkspace is too small"                     << std::endl; break;
+        case ZSTD_error_dstSize_tooSmall:                   std::cout << "ERROR: Destination size is too small"         << std::endl; break;
+        case ZSTD_error_srcSize_wrong:                      std::cout << "ERROR: Source size is wrong"                  << std::endl; break;
+        case ZSTD_error_dstBuffer_null:                     std::cout << "ERROR: Destination buffer is NULL"                     << std::endl; break;
         }
     } else {
-        size = engine_lz4.decompress(m_framebuf_in, frameSize, m_framebuf_out + fOffset, 640 * 2 * 2 * 48);
-        // std::cout << "received size " << frameSize << " => " << size << "\n";
-        fOffset += size;
+        fFrameSize = ret;
     }
 
-    nextTask() = envir().taskScheduler().scheduleDelayedTask(50, (TaskFunc*)getAgain, this);
+    auto end = std::chrono::system_clock::now();
+    std::chrono::duration<double> elapsed = end-start;
+    std::cout << "Frame decompression time " << elapsed.count() * 1000 << " ms, size " << frameSize << " => " << fFrameSize << "\n";
+    
+    afterGetting(this);
     return;
 }
 

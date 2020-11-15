@@ -3,11 +3,14 @@
 #include "liveMedia.hh"
 #include <BasicUsageEnvironment.hh>
 
-#include <if_lz4.h>
+#include <lz4.h>
+#include <zstd.h>
+#include <zstd_errors.h>
 
 #include <chrono>
 
 #define FRAME_SIZE (640*480*2)
+#define LZ4_PAYLOAD_HEADER_SIZE 4
 
 class LZ4DecodeFilter : public FramedFilter
 {
@@ -15,22 +18,34 @@ public:
     static LZ4DecodeFilter* createNew(UsageEnvironment& t_env, FramedSource* source) { return new LZ4DecodeFilter(t_env, source); };
 
 protected:
-    LZ4DecodeFilter(UsageEnvironment& t_env, FramedSource* source) : FramedFilter(t_env, source), fOffset(0) { 
+    LZ4DecodeFilter(UsageEnvironment& t_env, FramedSource* source) : FramedFilter(t_env, source), fOffset(0), fFrameNum(0xFFFFFFFF) { 
         m_framebuf_in  = new uint8_t[FRAME_SIZE];
         m_framebuf_out = new uint8_t[FRAME_SIZE * 2];
+
+        m_framebuf     = new uint8_t[FRAME_SIZE * 10];
+
+        lz_stream = LZ4_createStreamDecode();
     }
     virtual ~LZ4DecodeFilter() { 
-        delete[] m_framebuf_in;
+        LZ4_freeStreamDecode(lz_stream);
+
+        delete[] m_framebuf;
+
         delete[] m_framebuf_out;
+        delete[] m_framebuf_in;
     };
 
 private:
     uint8_t* m_framebuf_in;
     uint8_t* m_framebuf_out;
+    uint8_t* m_framebuf;
 
     uint32_t fOffset;
+    uint32_t fFrameNum;
 
-    lz4 engine_lz4;
+    LZ4_streamDecode_t* lz_stream;
+
+    // lz4 engine_lz4;
 
     std::chrono::_V2::system_clock::time_point start;
     std::chrono::_V2::system_clock::time_point end;

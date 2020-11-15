@@ -4,6 +4,8 @@
 #include <iostream>
 #include <iomanip>
 
+#define LZ4_COMPRESSION 3
+
 void LZ4EncodeFilter::afterGettingFrame( unsigned frameSize,
                             unsigned numTruncatedBytes,
                             struct timeval presentationTime,
@@ -17,26 +19,22 @@ void LZ4EncodeFilter::afterGettingFrame( unsigned frameSize,
     // fwrite(fTo, 1, FRAME_SIZE, f);
     // fclose(f);
 
-    // save the resolution into the frame - this is a hack WIDTH x HEIGHT => [uint16_t] x [uint16_t]
-    uint16_t* hdr = (uint16_t*)fTo;
-    hdr[0] = 640;
-    hdr[1] = 480;
-    fFrameSize = sizeof(uint16_t) * 2;
-
     // start to store compressed lines
+    fFrameSize = 0;
     size_t line_size = 0;
+    int todo = 0;
+    int size = 0;
     auto start = std::chrono::system_clock::now();
-#define LINES_TO_COMPRESS 48
-    for (int i = 0; i < 480 / LINES_TO_COMPRESS; i++) {
-        line_size = engine_lz4.compress(m_framebuf_in + (640 * 2 * i * LINES_TO_COMPRESS), 640 * 2 * LINES_TO_COMPRESS, fTo + fFrameSize, 640 * 2 * LINES_TO_COMPRESS);
-
-        // sprintf(fname, "/tmp/rs/cmp%04u.j2k", fnum++);
-        // f = fopen(fname, "w");
-        // fwrite(fTo + fFrameSize, 1, line_size, f);
-        // fclose(f);
-
-        // uint32_t* magic = (uint32_t*)(fTo + fFrameSize);
-        // std::cout << "Line magic is " << std::hex << *magic << std::dec << " for size " << line_size << std::endl;
+#define CHUNK_SIZE (16*1024)
+    while (size < FRAME_SIZE) {
+#ifdef LZ4_CMP
+        todo = FRAME_SIZE - size;
+        line_size = LZ4_compress_destSize((char*)(m_framebuf_in + size), (char*)(fTo + fFrameSize), &todo, CHUNK_SIZE);
+        size += todo;
+#else
+        line_size = ZSTD_compress((void*)(fTo + fFrameSize), FRAME_SIZE, (void*)(m_framebuf_in + size), FRAME_SIZE - size > CHUNK_SIZE ? CHUNK_SIZE : FRAME_SIZE - size, LZ4_COMPRESSION);
+        size += CHUNK_SIZE;
+#endif
         fFrameSize += line_size;
     }
     auto end = std::chrono::system_clock::now();

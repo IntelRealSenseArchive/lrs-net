@@ -20,8 +20,88 @@
 #include "JPEG2000DecodeFilter.h"
 #include "JPEGDecodeFilter.h"
 #include "LZ4DecodeFilter.h"
+#include "LZ4VideoRTPSource.h"
 
 using namespace std::placeholders;
+
+////
+
+class RsMediaSubsession; // forward
+
+class RsMediaSession : public MediaSession
+{
+public:
+    static RsMediaSession* createNew(UsageEnvironment& env, char const* sdpDescription);
+
+protected:
+    RsMediaSession(UsageEnvironment& env) : MediaSession(env) {};
+    virtual ~RsMediaSession() {};
+
+    virtual MediaSubsession* createNewMediaSubsession();
+
+    friend class RsMediaSubsessionIterator;
+};
+
+class RsMediaSubsessionIterator
+{
+public:
+    RsMediaSubsessionIterator(RsMediaSession const& session) : fOurSession(session) { reset(); };
+    virtual ~RsMediaSubsessionIterator() {};
+
+    RsMediaSubsession* next();
+    void reset();
+
+private:
+    RsMediaSession const& fOurSession;
+    RsMediaSubsession* fNextPtr;
+};
+
+class RsMediaSubsession : public MediaSubsession
+{
+protected:
+    friend class RsMediaSession;
+    friend class RsMediaSubsessionIterator;
+
+    RsMediaSubsession(RsMediaSession& parent) : MediaSubsession(parent) {};
+    virtual ~RsMediaSubsession() {};
+
+    virtual Boolean createSourceObjects(int useSpecialRTPoffset) {    
+        if (strcmp(fCodecName, "LZ4") == 0) {
+            fReadSource = fRTPSource = LZ4VideoRTPSource::createNew(env(), fRTPSocket, fRTPPayloadFormat, fRTPTimestampFrequency, "video/LZ4");
+            return True;
+        }
+        return MediaSubsession::createSourceObjects(useSpecialRTPoffset);
+    };
+
+};
+
+RsMediaSession* RsMediaSession::createNew(UsageEnvironment& env, char const* sdpDescription)
+{ 
+    RsMediaSession* newSession = new RsMediaSession(env);
+    if(newSession != NULL) {
+        if(!newSession->initializeWithSDP(sdpDescription)) {
+            delete newSession;
+            return NULL;
+        }
+    }
+    return newSession;
+}
+
+MediaSubsession* RsMediaSession::createNewMediaSubsession() {
+    return new RsMediaSubsession(*this); 
+}
+
+RsMediaSubsession* RsMediaSubsessionIterator::next() {
+    RsMediaSubsession* result = fNextPtr;
+    if (fNextPtr != NULL) fNextPtr = (RsMediaSubsession*)(fNextPtr->fNext);
+    return result;
+}
+
+void RsMediaSubsessionIterator::reset() {
+    fNextPtr = (RsMediaSubsession*)(fOurSession.fSubsessionsHead); 
+}
+
+////
 
 RSRTSPClient* RSRTSPClient::createNew(UsageEnvironment& env, char const* rtspURL)
 {
@@ -116,7 +196,7 @@ void* rs_net_device::doRTP() {
     std::cout << "Connecting to " << rtspURL << std::endl;
 
     // Start the RTSP client
-    TaskScheduler* scheduler = BasicTaskScheduler::createNew();
+    TaskScheduler* scheduler = BasicTaskScheduler::createNew(/* 1000 */); // Check this later
     UsageEnvironment* env = BasicUsageEnvironment::createNew(*scheduler);
 
     RTSPClient::responseBufferSize = 100000;
@@ -325,7 +405,8 @@ void RSRTSPClient::continueAfterDESCRIBE(int resultCode, char* resultString)
         std::cout << "Got a SDP description:\n" << sdpDescription << "\n";
 
         // Create a media session object from this SDP description:
-        m_scs.session = MediaSession::createNew(env, sdpDescription);
+        // m_scs.session = MediaSession::createNew(env, sdpDescription);
+        m_scs.session = RsMediaSession::createNew(env, sdpDescription);
         delete[] sdpDescription; // because we don't need it anymore
 
         if (m_scs.session == NULL) {
@@ -366,7 +447,7 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
 
             int useSpecialRTPoffset = -1; // for supported codecs
             if (strcmp(m_scs.subsession->codecName(), "LZ4") == 0) {
-                useSpecialRTPoffset = 4;
+                useSpecialRTPoffset = 0;
             }
 
             if(!m_scs.subsession->initiate(useSpecialRTPoffset))
@@ -955,3 +1036,4 @@ uint8_t* RSSink::getFrame() {
 
     return frame;
 }
+

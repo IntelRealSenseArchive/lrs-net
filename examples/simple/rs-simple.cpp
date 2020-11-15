@@ -43,15 +43,27 @@ int main(int argc, char * argv[]) try
     }
 
     // Main app loop
-    while (app)
-    {
+    auto start = std::chrono::system_clock::now();
+    uint32_t num_frames = 0;
+    while (app) {
         // Collect the new frames from all the connected devices
         try {
             rs2::frameset fs = pipe.wait_for_frames(1000);
             app.show(fs.apply_filter(yuv));
+            num_frames++;
+            auto end = std::chrono::system_clock::now();
+            std::chrono::duration<double> elapsed = end-start;
+            if (elapsed.count() > 0) {
+                int fps = num_frames / elapsed.count();
+                std::string display_fps("FPS: ");
+                display_fps += std::to_string(fps);
+                draw_text(30, 50, display_fps.c_str());
+            }
         } catch (...) {
             std::cout << "Timeout waiting for the frame" << std::endl;
         }
+        auto end = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed = end-start;
     }
 
     return EXIT_SUCCESS;

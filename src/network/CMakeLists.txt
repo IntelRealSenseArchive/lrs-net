@@ -31,8 +31,10 @@ set(RS_CLIENT_NET_CPP
     ./common/LZ4DecodeFilter.cpp
     ./common/JPEGDecodeFilter.h
     ./common/JPEGDecodeFilter.cpp
-    ./common/JPEG2000DecodeFilter.h
-    ./common/JPEG2000DecodeFilter.cpp
+    # ./common/JPEG2000DecodeFilter.h
+    # ./common/JPEG2000DecodeFilter.cpp
+    ./common/LZ4VideoRTPSource.h
+    ./common/LZ4VideoRTPSource.cpp
 )
 
 set(RS_COMMON_NET_CPP
@@ -40,14 +42,14 @@ set(RS_COMMON_NET_CPP
     ./common/RsUsageEnvironment.cpp
     ./common/RsUsageEnvironment.h
 
-    ./common/jpeg2k.h
-    ./common/jpeg2k.cpp
+    # ./common/jpeg2k.h
+    # ./common/jpeg2k.cpp
 
     ./common/jpeg.h
     ./common/jpeg.cpp
 
-    ./common/if_lz4.h
-    ./common/if_lz4.cpp
+    # ./common/if_lz4.h
+    # ./common/if_lz4.cpp
 )
 
 set(RS_COMP_NET_CPP
@@ -86,8 +88,8 @@ set(RS_SERVER_NET_CPP
     ./common/LZ4EncodeFilter.cpp
     ./common/JPEGEncodeFilter.h
     ./common/JPEGEncodeFilter.cpp
-    ./common/JPEG2000EncodeFilter.h
-    ./common/JPEG2000EncodeFilter.cpp
+    # ./common/JPEG2000EncodeFilter.h
+    # ./common/JPEG2000EncodeFilter.cpp
 
     ./common/LZ4VideoRTPSink.h
     ./common/LZ4VideoRTPSink.cpp
@@ -183,7 +185,7 @@ if(WIN32)
     set(JPGLIB "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/turbojpeg-static.lib")
 else(WIN32)
     set(JPGLIB      "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/libturbojpeg.a")
-    set(OPENJPEGLIB "${CMAKE_BINARY_DIR}/openjpeg/lib/libopenjp2.a")
+    # set(OPENJPEGLIB "${CMAKE_BINARY_DIR}/openjpeg/lib/libopenjp2.a")
     set(ZSTDLIB     "${CMAKE_BINARY_DIR}/zstd/lib/libzstd.a")
 endif(WIN32)
 

@@ -3,7 +3,10 @@
 #include "liveMedia.hh"
 #include <BasicUsageEnvironment.hh>
 
-#include <if_lz4.h>
+// #include <if_lz4.h>
+#include <lz4.h>
+#include <zstd.h>
+#include <zstd_errors.h>
 
 #define FRAME_SIZE (640*480*2)
 
@@ -19,9 +22,13 @@ protected:
     LZ4EncodeFilter(UsageEnvironment& t_env, FramedSource* source) : FramedFilter(t_env, source) {
         m_framebuf_in  = new uint8_t[FRAME_SIZE];
         m_framebuf_out = new uint8_t[FRAME_SIZE];
+
+        // lz4_stream = LZ4_createStream();
     } 
 
     virtual ~LZ4EncodeFilter() {
+        // LZ4_freeStream(lz4_stream);
+
         delete[] m_framebuf_in;
         delete[] m_framebuf_out;
     };
@@ -30,7 +37,9 @@ private:
     uint8_t* m_framebuf_in;
     uint8_t* m_framebuf_out;
 
-    lz4 engine_lz4;
+    // LZ4_stream_t* lz4_stream;
+
+    // lz4 engine_lz4;
 
     virtual void doGetNextFrame() 
     { 
