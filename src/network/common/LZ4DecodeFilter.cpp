@@ -4,23 +4,83 @@
 #include <iostream>
 #include <iomanip>
 
-void LZ4DecodeFilter::afterGettingFrame( unsigned frameSize,
-                        unsigned numTruncatedBytes,
-                        struct timeval presentationTime,
-                        unsigned durationInMicroseconds)
+LZ4DecodeFilter::LZ4DecodeFilter(UsageEnvironment& t_env, FramedSource* source) 
+    : FramedFilter(t_env, source), m_frame_count(0), m_processing(0), m_size(0), m_offset(0), m_total_size(0)  { 
+    m_framebuf_in  = new uint8_t[FRAME_SIZE];
+    m_framebuf_out = new uint8_t[FRAME_SIZE * 2];
+    m_framebuf     = new uint8_t[FRAME_SIZE * 10];
+
+    m_beginning = std::chrono::system_clock::now();
+}
+
+LZ4DecodeFilter::~LZ4DecodeFilter() { 
+    delete[] m_framebuf;
+    delete[] m_framebuf_out;
+    delete[] m_framebuf_in;
+}
+
+void LZ4DecodeFilter::doGetNextFrame() 
 {
+    // fInputSource->getNextFrame(m_framebuf_in, FRAME_SIZE /* fMaxSize */, afterGettingFrame, this, FramedSource::handleClosure, this);
+    getFrame(this);
+}
+
+void LZ4DecodeFilter::getFrame(void* clientData) {
+    LZ4DecodeFilter* f = (LZ4DecodeFilter*)clientData;
+    f->fInputSource->getNextFrame(f->m_framebuf_in, FRAME_SIZE /* fMaxSize */, afterGettingFrame, clientData, FramedSource::handleClosure, clientData);
+}
+
+void LZ4DecodeFilter::afterGettingFrame(void* clientData, unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds) { 
+    ((LZ4DecodeFilter*)clientData)->afterGettingFrame(frameSize, numTruncatedBytes, presentationTime, durationInMicroseconds);
+}
+
+void LZ4DecodeFilter::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds) {
     static uint32_t fnum = 1;
     char fname[32] = {0};
     FILE* f = 0;
 
-    fFrameSize = 0;
-    int size = 0;
-    int off = 0;
+    if (!m_processing) {
+        // new frame arrived, let's store it's params
+        m_processing = 1;
 
-    auto start = std::chrono::system_clock::now();
+        start = std::chrono::system_clock::now();
 
-#define CHUNK_SIZE (16*1024)
+        m_size = 0;
+        m_offset = 0;
+        m_total_size = 0;
+    }
+
+    // we have the reminds of the old frame to receive
+    m_total_size += frameSize;
+    m_offset = *(uint32_t*)m_framebuf_in;
+#define CHUNK_SIZE (2*1024)
+    int ret = ZSTD_decompress((void*)(m_framebuf_out + m_offset), CHUNK_SIZE, (void*)(m_framebuf_in + sizeof(uint32_t)), frameSize - sizeof(uint32_t));
+    m_offset += CHUNK_SIZE;
+
+    if (m_offset < FRAME_SIZE) {
+        // get another chunk
+        nextTask() = envir().taskScheduler().scheduleDelayedTask(10, getFrame, this);
+    } else {
+        // deliver the frame
+        m_processing = 0;
+        fFrameSize = FRAME_SIZE;
+        memcpy(fTo, m_framebuf_out, fFrameSize);
+
+        auto end = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed = end-start;
+        std::chrono::duration<double> total_time = end-m_beginning;
+        m_frame_count++;
+        double fps;
+        if (total_time.count() > 0) fps = (double)m_frame_count / (double)total_time.count();
+        else fps = 0;
+        std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) << elapsed.count() * 1000 << " ms, size " << m_total_size << " => " << fFrameSize << ", FPS: " << fps << "\n";
+        
+        afterGetting(this);
+    }
+
+/*
 #if 0
+  #if 0
     memset(m_framebuf_out, 0, FRAME_SIZE);
     // got the frame - it might be broken - repare it
     // find the chunk and it's size
@@ -39,7 +99,6 @@ void LZ4DecodeFilter::afterGettingFrame( unsigned frameSize,
             while ((*((uint32_t*)next) != ZSTD_MAGICNUMBER) && (next - m_framebuf_in < frameSize)) next++;
             size = next - ptr;
 
-            int ret = ZSTD_decompress((void*)(m_framebuf_out + off), CHUNK_SIZE, (void*)ptr, size);
             if (ZSTD_isError(ret)) {
                 // broken chunk
                 std::cout << "Decompression issues" << std::endl;
@@ -55,7 +114,7 @@ void LZ4DecodeFilter::afterGettingFrame( unsigned frameSize,
     }
     memcpy(fTo, m_framebuf_out, off);
     fFrameSize = off;
-#else
+  #else
     // sprintf(fname, "/tmp/rs/in%04u.j2k", fnum++);
     // f = fopen(fname, "wb");
     // fwrite(m_framebuf, 1, frameSize, f);
@@ -93,21 +152,7 @@ void LZ4DecodeFilter::afterGettingFrame( unsigned frameSize,
     } else {
         fFrameSize = ret;
     }
+  #endif
 #endif
-    auto end = std::chrono::system_clock::now();
-    std::chrono::duration<double> elapsed = end-start;
-    std::chrono::duration<double> total_time = end-m_beginning;
-    m_frame_count++;
-    double fps;
-    if (total_time.count() > 0) fps = (double)m_frame_count / (double)total_time.count();
-    else fps = 0;
-    std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) << elapsed.count() * 1000 << " ms, size " << frameSize << " => " << fFrameSize << ", FPS: " << fps << "\n";
-    
-    afterGetting(this);
-    return;
-}
-
-void LZ4DecodeFilter::getAgain(void* clientData) {
-    LZ4DecodeFilter* f = (LZ4DecodeFilter*)clientData;
-    f->fInputSource->getNextFrame(f->m_framebuf_in, FRAME_SIZE /* fMaxSize */, afterGettingFrame, f, FramedSource::handleClosure, f);
+*/
 }

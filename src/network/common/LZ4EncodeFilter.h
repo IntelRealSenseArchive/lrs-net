@@ -16,42 +16,25 @@ public:
     static LZ4EncodeFilter* createNew(UsageEnvironment& t_env, FramedSource* source) { return new LZ4EncodeFilter(t_env, source); }
 
 protected:
-    LZ4EncodeFilter(UsageEnvironment& t_env, FramedSource* source) : FramedFilter(t_env, source), m_frame_count(0) {
-        m_framebuf_in  = new uint8_t[FRAME_SIZE];
-        m_framebuf_out = new uint8_t[FRAME_SIZE];
-
-        m_beginning = std::chrono::system_clock::now();
-    } 
-
-    virtual ~LZ4EncodeFilter() {
-        delete[] m_framebuf_in;
-        delete[] m_framebuf_out;
-    };
+    LZ4EncodeFilter(UsageEnvironment& t_env, FramedSource* source);
+    virtual ~LZ4EncodeFilter();
 
 private:
     uint8_t* m_framebuf_in;
     uint8_t* m_framebuf_out;
 
+    uint32_t m_processing;
+    uint32_t m_size;
+    uint32_t m_offset;
+    uint32_t m_out_size;
+    std::chrono::_V2::system_clock::time_point start;
+
     uint32_t m_frame_count;
     std::chrono::_V2::system_clock::time_point m_beginning;
 
-    virtual void doGetNextFrame() 
-    { 
-        fInputSource->getNextFrame(m_framebuf_in, fMaxSize /* FRAME_SIZE */, afterGettingFrame, this, FramedSource::handleClosure, this);
-    }
-
-    static void afterGettingFrame(void* clientData, unsigned frameSize,
-                                unsigned numTruncatedBytes,
-                                struct timeval presentationTime,
-                                unsigned durationInMicroseconds)
-    { 
-        ((LZ4EncodeFilter*)clientData)->afterGettingFrame(frameSize, numTruncatedBytes, presentationTime, durationInMicroseconds);
-    }
-
-    void afterGettingFrame( unsigned frameSize,
-                            unsigned numTruncatedBytes,
-                            struct timeval presentationTime,
-                            unsigned durationInMicroseconds);
+    virtual void doGetNextFrame();
+    static void afterGettingFrame(void* clientData, unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds);
+    void afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds);
 
 protected:
     virtual char const* MIMEtype() const { return "video/LZ4"; }
