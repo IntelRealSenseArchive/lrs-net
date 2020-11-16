@@ -54,7 +54,7 @@ int main(int argc, char * argv[]) try
             auto end = std::chrono::system_clock::now();
             std::chrono::duration<double> elapsed = end-start;
             if (elapsed.count() > 0) {
-                int fps = num_frames / elapsed.count();
+                double fps = (double)num_frames / (double)elapsed.count();
                 std::string display_fps("FPS: ");
                 display_fps += std::to_string(fps);
                 draw_text(30, 50, display_fps.c_str());

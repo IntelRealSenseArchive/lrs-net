@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <iomanip>
 
 void JPEGEncodeFilter::afterGettingFrame( unsigned frameSize,
                         unsigned numTruncatedBytes,
@@ -43,8 +44,15 @@ void JPEGEncodeFilter::afterGettingFrame( unsigned frameSize,
 #else
     auto start = std::chrono::system_clock::now();
     fFrameSize = jpeg::compress(m_framebuf_in, 640, 480, fTo);
+
     auto end = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed = end-start;
+    std::chrono::duration<double> total_time = end-m_beginning;
+    m_frame_count++;
+    double fps;
+    if (total_time.count() > 0) fps = (double)m_frame_count / (double)total_time.count();
+    else fps = 0;
+    std::cout << "Frame compression time " << elapsed.count() * 1000 << "ms,\tsize " << fFrameSize << " (" << std::fixed << std::setw(5) << std::setprecision(2) << (float)(FRAME_SIZE) / (float)fFrameSize << " ), FPS: " << fps << "\n";
 
     // std::cout << "Frame compression time " << elapsed.count() * 1000 << "ms,\tsize " << fFrameSize << "\n";
 

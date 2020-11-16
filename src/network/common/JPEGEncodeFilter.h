@@ -5,6 +5,8 @@
 
 #include <jpeg.h>
 
+#include <chrono>
+
 #define FRAME_SIZE (640*480*2)
 
 class JPEGEncodeFilter : public JPEGVideoSource 
@@ -19,6 +21,8 @@ protected:
     JPEGEncodeFilter(UsageEnvironment& t_env, FramedSource* source) : JPEGVideoSource(t_env), fInputSource(source) {
         m_framebuf_in  = new uint8_t[FRAME_SIZE];
         m_framebuf_out = new uint8_t[FRAME_SIZE];
+
+        m_beginning = std::chrono::system_clock::now();
     } 
 
     virtual ~JPEGEncodeFilter() {
@@ -28,6 +32,9 @@ protected:
 
 private:
     FramedSource* fInputSource;
+
+    uint32_t m_frame_count;
+    std::chrono::_V2::system_clock::time_point m_beginning;
 
     uint8_t* m_framebuf_in;
     uint8_t* m_framebuf_out;

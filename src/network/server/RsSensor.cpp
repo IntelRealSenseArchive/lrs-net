@@ -55,7 +55,9 @@ int RsSensor::stop()
 
 int RsSensor::start(rs2::video_stream_profile& profile, rs2::frame_queue& queue)
 {
-    std::cout << "Sensor started" << std::endl;
+    std::cout << "Sensor started for stream: " << std::setw(15) << rs2_stream_to_string(profile.stream_type()) 
+                                               << std::setw(15) << rs2_format_to_string(profile.format())      
+                                               << std::setw(15) << profile.width() << "x" << profile.height() << "x" << profile.fps() << std::endl;    
 
     auto callback = [&](const rs2::frame& frame) {
         //push frame to its queue

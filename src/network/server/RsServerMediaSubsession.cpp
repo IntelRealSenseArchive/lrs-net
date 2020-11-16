@@ -57,7 +57,7 @@ char const* RsServerMediaSubsession::getAuxSDPLine(RTPSink* rtpSink, FramedSourc
 
 FramedSource* RsServerMediaSubsession::createNewStreamSource(unsigned /*t_clientSessionId*/, unsigned& t_estBitrate)
 {
-    t_estBitrate = 20000; // "estBitrate" is the stream's estimated bitrate, in kbps
+    t_estBitrate = 40000; // "estBitrate" is the stream's estimated bitrate, in kbps
     std::cout << std::endl << "Creating device source" << std::endl;
 
 #define ENCODER_LZ4
@@ -93,10 +93,6 @@ RTPSink* RsServerMediaSubsession ::createNewRTPSink(Groupsock* t_rtpGroupsock, u
         return JPEGVideoRTPSink::createNew(envir(), t_rtpGroupsock);
     } else if (type == "LZ4") {
         /// LZ4 compressed video
-        // std::cout << "Should use LZ4VideoRTPSink, using RawVideoRTPSink now\n";
-        // return RawVideoRTPSink::createNew(envir(), t_rtpGroupsock, t_rtpPayloadTypeIfDynamic, 
-        //     m_videoStreamProfile.width(), m_videoStreamProfile.height(), 8 /* check RFC 4175, sec 6.1 */, 
-        //     format_to_string(m_videoStreamProfile.format()), "BT709-2");
         std::cout << "Using LZ4VideoRTPSink\n";
         return LZ4VideoRTPSink::createNew(envir(), t_rtpGroupsock);
     } else {

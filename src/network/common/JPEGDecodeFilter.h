@@ -5,6 +5,8 @@
 
 #include <jpeg.h>
 
+#include <chrono>
+
 #define FRAME_SIZE (640*480*2)
 
 class JPEGDecodeFilter : public FramedFilter
@@ -13,12 +15,18 @@ public:
     static JPEGDecodeFilter* createNew(UsageEnvironment& t_env, FramedSource* source) { return new JPEGDecodeFilter(t_env, source); };
 
 protected:
-    JPEGDecodeFilter(UsageEnvironment& t_env, FramedSource* source) : FramedFilter(t_env, source) { m_framebuf = new uint8_t[FRAME_SIZE]; }
+    JPEGDecodeFilter(UsageEnvironment& t_env, FramedSource* source) : FramedFilter(t_env, source) { 
+        m_framebuf = new uint8_t[FRAME_SIZE]; 
+        m_beginning = std::chrono::system_clock::now();
+    }
     virtual ~JPEGDecodeFilter() { delete[] m_framebuf; };
 
 private:
 
     uint8_t* m_framebuf; // frame buffer for plain YUYV image from the camera
+
+    uint32_t m_frame_count;
+    std::chrono::_V2::system_clock::time_point m_beginning;
 
     virtual void doGetNextFrame() 
     { 
