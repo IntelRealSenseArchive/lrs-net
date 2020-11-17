@@ -486,6 +486,9 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
                 std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
 #endif
 
+                // do not wait for the out of order packets
+                m_scs.subsession->rtpSource()->setPacketReorderingThresholdTime(0); 
+
                 // Continue setting up this subsession, by sending a RTSP "SETUP" command:
                 sendSetupCommand(*m_scs.subsession, RSRTSPClient::continueAfterSETUP);
                 break;
