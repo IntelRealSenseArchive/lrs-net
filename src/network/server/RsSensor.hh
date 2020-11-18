@@ -3,47 +3,80 @@
 
 #pragma once
 
-#include "compression/ICompression.h"
-#include <chrono>
-#include <common/RsCommon.h>
-#include <librealsense2/hpp/rs_types.hpp>
+#include <iostream>
+#include <iomanip>
+#include <queue>
+#include <map>
+
 #include <librealsense2/rs.hpp>
-#include <unordered_map>
 
-typedef struct RsOption
-{
-    rs2_option m_opt;
-    rs2::option_range m_range;
-} RsOption;
+typedef std::map<void*, std::queue<uint8_t*>*> consumer_queue_map;
 
-class RsSensor
-{
+class frames_queue {
 public:
-    RsSensor(UsageEnvironment* t_env, rs2::device t_device, rs2::sensor t_sensor);
+    frames_queue(rs2::sensor sensor, rs2::video_stream_profile stream)
+        : m_sensor(sensor), m_stream(stream) {};
+   ~frames_queue() { 
+        for (std::map<void*, std::queue<uint8_t*>*>::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
+            stop(it->first);
+    }; // TODO: improve
 
-    int open(rs2::video_stream_profile& profile);
-    int start(rs2::video_stream_profile& profile, rs2::frame_queue& queue);
-    int stop();
-    int close();
-
-    bool is_streaming() { return m_sensor.get_active_streams().size() > 0; }
+    bool is_streaming() { return m_sensor.get_active_streams().size() > 0; };
     
-    rs2::sensor& getRsSensor() { return m_sensor; }
+    uint32_t get_type()   { return m_stream.stream_type();   };
+    uint32_t get_index()  { return m_stream.stream_index();  };
+    uint32_t get_fps()    { return m_stream.fps();           };
 
-    std::unordered_map<long long int, rs2::video_stream_profile> getStreamProfiles() { return m_streamProfiles; }
+    uint32_t get_width()  { return m_stream.width();  };
+    uint32_t get_height() { return m_stream.height(); };
 
-    static long long int getStreamProfileKey(rs2::stream_profile t_profile);
-    std::string getSensorName();
-    static int getStreamProfileBpp(rs2_format t_format);
-    rs2::device getDevice() { return m_device; }
-    std::vector<RsOption> getSupportedOptions();
+    uint32_t get_size()   { return get_width() * get_height() * 2; /* Color is 2 BPP */ };
+
+    uint8_t* get_frame(void* consumer)  { 
+        if (m_queues.find(consumer) == m_queues.end()) {
+            // new consumer - allocate the queue for it
+            std::queue<uint8_t*>* q = new std::queue<uint8_t*>;
+            m_queues.insert(std::pair<void*, std::queue<uint8_t*>*>(consumer, q));
+        }
+
+        if (!is_streaming()) {
+            // start the sensor
+            std::cout << "Sensor started for stream: " << std::setw(15) << get_type()
+                                                       << std::setw(15) << rs2_format_to_string(m_stream.format())      
+                                                       << std::setw(15) << get_width() << "x" << get_height() << "x" << get_fps() << std::endl;    
+
+            m_sensor.open(m_stream);
+
+            auto callback = [&](const rs2::frame& frame) {
+                //push frame to its queue
+                for (std::map<void*, std::queue<uint8_t*>*>::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
+                    (it->second)->push((uint8_t*)frame.get_data());
+            };
+            m_sensor.start(callback);            
+        }
+
+        uint8_t* frame = NULL;
+        if (!m_queues[consumer]->empty()) {
+            frame = m_queues[consumer]->front();
+            m_queues[consumer]->pop(); 
+        }
+
+        return frame;
+    };
+
+    uint32_t stop(void* consumer) { 
+        delete m_queues[consumer];
+        m_queues.erase(consumer);
+        if (m_queues.empty() && is_streaming()) {
+            m_sensor.stop();
+            m_sensor.close();
+        }
+    };
 
 private:
-    UsageEnvironment* env;
+    rs2::sensor               m_sensor;
+    rs2::video_stream_profile m_stream;
 
-    rs2::sensor m_sensor;
-    std::unordered_map<long long int, rs2::video_stream_profile> m_streamProfiles;
-    std::unordered_map<long long int, std::shared_ptr<ICompression>> m_iCompress;
-    rs2::device m_device;
-    std::unordered_map<long long int, std::chrono::high_resolution_clock::time_point> m_prevSample;
+    std::queue<uint8_t*> m_queue;
+    std::map<void*, std::queue<uint8_t*>*> m_queues;
 };

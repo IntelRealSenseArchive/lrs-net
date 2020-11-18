@@ -1,23 +1,13 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2020 Intel Corporation. All Rights Reserved.
 
-#include <iostream>
+#include <string>
 
 #include <liveMedia.hh>
 #include <GroupsockHelper.hh>
-#include <signal.h>
-#include "RsUsageEnvironment.h"
-#include "RsSource.hh"
-#include "RsServerMediaSubsession.h"
-#include "RsDevice.hh"
-#include "RsRTSPServer.hh"
-#include "RsServerMediaSession.h"
-#include "RsCommon.h"
-#include <compression/CompressionFactory.h>
+#include "BasicUsageEnvironment.hh"
 
-#include <librealsense2/hpp/rs_device.hpp>
-
-#include <string>
+#include <librealsense2/rs.hpp>
 
 class server
 {
@@ -34,8 +24,7 @@ private:
 
     RTSPServer* RSServer;
 
-    std::shared_ptr<RsDevice> rsDevice;
-    std::vector<rs2::video_stream_profile> supported_stream_profiles; // streams for extrinsics map creation
+    // std::vector<rs2::video_stream_profile> supported_stream_profiles; // streams for extrinsics map creation
 
     unsigned int port;
 };

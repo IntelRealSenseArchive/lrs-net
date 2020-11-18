@@ -57,7 +57,8 @@ void LZ4EncodeFilter::afterGettingFrame(unsigned frameSize, unsigned numTruncate
 #define CHUNK_SIZE (2*1024)
     *(uint32_t*)fTo = m_offset;
     fFrameSize = sizeof(uint32_t);
-    fFrameSize += ZSTD_compress((void*)(fTo + sizeof(uint32_t)), FRAME_SIZE, (void*)(m_framebuf_in + m_offset), m_size - m_offset > CHUNK_SIZE ? CHUNK_SIZE : m_size - m_offset, LZ4_COMPRESSION);
+    int ret = ZSTD_compress((void*)(fTo + sizeof(uint32_t)), FRAME_SIZE, (void*)(m_framebuf_in + m_offset), m_size - m_offset > CHUNK_SIZE ? CHUNK_SIZE : m_size - m_offset, LZ4_COMPRESSION);
+    fFrameSize += ret;
     m_offset += CHUNK_SIZE;
     m_out_size += fFrameSize;
 
@@ -72,7 +73,7 @@ void LZ4EncodeFilter::afterGettingFrame(unsigned frameSize, unsigned numTruncate
         double fps;
         if (total_time.count() > 0) fps = (double)m_frame_count / (double)total_time.count();
         else fps = 0;
-        std::cout << "Frame compression time " << std::fixed << std::setw(5) << std::setprecision(2) << elapsed.count() * 1000 << "ms,\tsize " << m_out_size << " (" << (float)(FRAME_SIZE) / (float)m_out_size << " ), FPS: " << fps << "\n";
+        std::cout << "Frame compression time " << std::fixed << std::setw(5) << std::setprecision(2) << elapsed.count() * 1000 << "ms,\tsize " << m_size << " => " << m_out_size << " (" << (float)(FRAME_SIZE) / (float)m_out_size << " ), FPS: " << fps << "\n";
     }
 
     // sprintf(fname, "/tmp/cmp%04u.j2k", fnum++);

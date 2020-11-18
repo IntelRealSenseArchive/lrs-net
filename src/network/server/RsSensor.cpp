@@ -1,3 +1,4 @@
+#if 0 
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2020 Intel Corporation. All Rights Reserved.
 
@@ -91,48 +92,6 @@ std::string RsSensor::getSensorName()
     }
 }
 
-int RsSensor::getStreamProfileBpp(rs2_format t_format)
-{
-    int bpp = 0;
-    switch(t_format)
-    {
-    case RS2_FORMAT_RGB8:
-    {
-        bpp = 3;
-        break;
-    }
-    case RS2_FORMAT_BGR8:
-    {
-        bpp = 3;
-        break;
-    }
-    case RS2_FORMAT_RGBA8:
-    {
-        bpp = 3; //TODO: need to be 4 bpp, change it after add support for 4 bpp formats
-        break;
-    }
-    case RS2_FORMAT_BGRA8:
-    {
-        bpp = 3; //TODO: need to be 4 bpp, change it after add support for 4 bpp formats
-        break;
-    }
-    case RS2_FORMAT_Z16:
-    case RS2_FORMAT_Y16:
-    case RS2_FORMAT_Y8:
-    case RS2_FORMAT_RAW16:
-    case RS2_FORMAT_YUYV:
-    case RS2_FORMAT_UYVY:
-    {
-        bpp = 2;
-        break;
-    }
-    default:
-        bpp = 0;
-        break;
-    }
-    return bpp;
-}
-
 std::vector<RsOption> RsSensor::getSupportedOptions()
 {
     std::vector<RsOption> returnedVector;
@@ -157,3 +116,5 @@ std::vector<RsOption> RsSensor::getSupportedOptions()
     }
     return returnedVector;
 }
+
+#endif

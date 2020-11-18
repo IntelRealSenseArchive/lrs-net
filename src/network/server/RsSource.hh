@@ -6,33 +6,57 @@
 #include "liveMedia.hh"
 #include <BasicUsageEnvironment.hh>
 
-#include "DeviceSource.hh"
 #include "RsSensor.hh"
 
-#include <condition_variable>
-#include <mutex>
 #include <librealsense2/rs.hpp>
+
+///
+#include <thread>
+#include <chrono>
+#include <iostream>
 
 class RsDeviceSource : public FramedSource
 {
 public:
-    static RsDeviceSource* createNew(UsageEnvironment& t_env, RsSensor sensor, rs2::video_stream_profile& t_videoStreamProfile);
-    static void waitForFrame(RsDeviceSource* t_deviceSource);
+    static RsDeviceSource* createNew(UsageEnvironment& t_env, frames_queue* pqs) {
+        return new RsDeviceSource(t_env, pqs);
+    };
 
 protected:
-    RsDeviceSource(UsageEnvironment& t_env, RsSensor sensor, rs2::video_stream_profile& t_videoStreamProfile);
-    virtual ~RsDeviceSource();
+    RsDeviceSource(UsageEnvironment& t_env, frames_queue* pqs) : FramedSource(t_env), m_pqs(pqs) {};
+
+    virtual ~RsDeviceSource() {};
 
 protected:
-    virtual void doStopGettingFrames();
+    virtual void doStopGettingFrames() { FramedSource::doStopGettingFrames(); m_pqs->stop((void*)this); };
 
 private:
-    virtual void doGetNextFrame();
-    rs2::frame_queue& getFramesQueue() { return m_framesQueue; };
+    virtual void doGetNextFrame() {
+        if (isCurrentlyAwaitingData()) {
+            uint8_t* frame = m_pqs->get_frame((void*)this);
+            if (frame) {
+                // we have got the data
+                gettimeofday(&fPresentationTime, NULL); // If you have a more accurate time - e.g., from an encoder - then use that instead.
+
+                fFrameSize = m_pqs->get_size();
+                memcpy(fTo, frame, fFrameSize);
+                
+                afterGetting(this); // After delivering the data, inform the reader that it is now available:
+            } else {
+                // return here after 1ms
+                nextTask() = envir().taskScheduler().scheduleDelayedTask(1000, (TaskFunc*)waitForFrame, this);
+            }
+        } else {
+            std::cout << "Attempting to read the frame out of band" << std::endl;
+        }
+    };
+
+    static void waitForFrame(RsDeviceSource* t_deviceSource) {
+        //// std::cout << "RsDeviceSource::waitForFrame" << std::endl;
+        t_deviceSource->doGetNextFrame();
+    };
+
 
 private:
-    RsSensor m_rsSensor;
-
-    rs2::frame_queue m_framesQueue;
-    rs2::video_stream_profile& m_streamProfile;
+    frames_queue* m_pqs;
 };

@@ -191,7 +191,8 @@ void* rs_net_device::doRTP() {
     std::cout << "RTP support thread started: " << pthread_self() << std::endl;
 
     std::string rtspURL;
-    rtspURL.append("rtsp://").append(m_ip_address).append(":").append(std::to_string(m_ip_port)).append("/rgbcamera");
+    rtspURL.append("rtsp://").append(m_ip_address).append(":").append(std::to_string(m_ip_port)).append("/RGB Camera");
+    // rtspURL.append("rtsp://").append(m_ip_address).append(":").append(std::to_string(m_ip_port)).append("/Stereo Module");
 
     std::cout << "Connecting to " << rtspURL << std::endl;
 
@@ -323,7 +324,7 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
     m_rtp = std::thread( [this](){ doRTP(); }); 
 
     // This section constructs software device. 
-    rgb = std::make_shared<rs2::software_sensor>(m_device.add_sensor("rgbcamera"));
+    rgb = std::make_shared<rs2::software_sensor>(m_device.add_sensor("COLOR"));
 
     rs2_intrinsics rgb_intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
 

@@ -1,3 +1,4 @@
+#if 0
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2020 Intel Corporation. All Rights Reserved.
 
@@ -103,3 +104,4 @@ RTPSink* RsServerMediaSubsession ::createNewRTPSink(Groupsock* t_rtpGroupsock, u
             format_to_string(m_videoStreamProfile.format()), "BT709-2");
     }
 }
+#endif

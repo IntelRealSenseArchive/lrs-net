@@ -67,21 +67,21 @@ set(RS_COMP_NET_CPP
 )
 
 set(RS_SERVER_NET_CPP
-    ./server/RsDevice.cpp
-    ./server/RsDevice.hh
+#    ./server/RsDevice.cpp
+#    ./server/RsDevice.hh
 #    ./server/RsRTSPServer.cpp
 #    ./server/RsRTSPServer.hh
-    ./server/RsSensor.cpp
-    ./server/RsSensor.hh
+#    ./server/RsSensor.cpp
+#    ./server/RsSensor.hh
     ./server/RsServer.cpp
     ./server/RsServer.h
 #    ./server/RsServerMediaSession.cpp
 #    ./server/RsServerMediaSession.h
-    ./server/RsServerMediaSubsession.cpp
+#    ./server/RsServerMediaSubsession.cpp
     ./server/RsServerMediaSubsession.h
 #    ./server/RsSimpleRTPSink.cpp
 #    ./server/RsSimpleRTPSink.h
-    ./server/RsSource.cpp
+#    ./server/RsSource.cpp
     ./server/RsSource.hh
 
     ./common/LZ4EncodeFilter.h

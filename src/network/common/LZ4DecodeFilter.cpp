@@ -35,9 +35,9 @@ void LZ4DecodeFilter::afterGettingFrame(void* clientData, unsigned frameSize, un
 }
 
 void LZ4DecodeFilter::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds) {
-    static uint32_t fnum = 1;
-    char fname[32] = {0};
-    FILE* f = 0;
+    // static uint32_t fnum = 1;
+    // char fname[32] = {0};
+    // FILE* f = 0;
 
     if (!m_processing) {
         // new frame arrived, let's store it's params

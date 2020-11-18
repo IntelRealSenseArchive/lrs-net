@@ -9,6 +9,7 @@
 class LZ4VideoRTPSink : public VideoRTPSink {
 public:
     static LZ4VideoRTPSink* createNew(UsageEnvironment& env, Groupsock* RTPgs) { return new LZ4VideoRTPSink(env, RTPgs); }
+    virtual Boolean frameCanAppearAfterPacketStart(unsigned char const* frameStart, unsigned numBytesInFrame) const { return False; };
 
 protected:
     LZ4VideoRTPSink(UsageEnvironment& env, Groupsock* RTPgs) : VideoRTPSink(env, RTPgs, 96, 90000, "LZ4"), fFrameNum(0){};
