@@ -64,6 +64,11 @@ int main(int argc, char * argv[]) try
         }
         auto end = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed = end-start;
+
+        if (elapsed > std::chrono::seconds(1)) {
+            start = std::chrono::system_clock::now();
+            num_frames = 0;
+        }
     }
 
     return EXIT_SUCCESS;

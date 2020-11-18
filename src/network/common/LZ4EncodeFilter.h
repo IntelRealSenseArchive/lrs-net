@@ -3,9 +3,6 @@
 #include "liveMedia.hh"
 #include <BasicUsageEnvironment.hh>
 
-#include <zstd.h>
-#include <zstd_errors.h>
-
 #include <chrono>
 
 #define FRAME_SIZE (640*480*2)

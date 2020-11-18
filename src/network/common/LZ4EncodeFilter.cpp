@@ -4,6 +4,11 @@
 #include <iostream>
 #include <iomanip>
 
+#include <zstd.h>
+#include <zstd_errors.h>
+
+#include <lz4.h>
+
 #define LZ4_COMPRESSION 1
 
 LZ4EncodeFilter::LZ4EncodeFilter(UsageEnvironment& t_env, FramedSource* source) 
@@ -55,10 +60,28 @@ void LZ4EncodeFilter::afterGettingFrame(unsigned frameSize, unsigned numTruncate
 
     // we have the reminds of the old frame to send 
 #define CHUNK_SIZE (2*1024)
-    *(uint32_t*)fTo = m_offset;
-    fFrameSize = sizeof(uint32_t);
-    int ret = ZSTD_compress((void*)(fTo + sizeof(uint32_t)), FRAME_SIZE, (void*)(m_framebuf_in + m_offset), m_size - m_offset > CHUNK_SIZE ? CHUNK_SIZE : m_size - m_offset, LZ4_COMPRESSION);
+    typedef struct chunk_header{
+        uint32_t size;
+        uint32_t offset;
+    } chunk_header_t;
+#define CHUNK_HLEN (sizeof(chunk_header_t))
+
+    chunk_header_t* ch = (chunk_header_t*)fTo;
+
+    ch->offset = m_offset;
+    fFrameSize = sizeof(chunk_header_t);
+#if 0    
+  #if 0    
+    int ret = ZSTD_compress((void*)(fTo + CHUNK_HLEN), FRAME_SIZE, (void*)(m_framebuf_in + m_offset), m_size - m_offset > CHUNK_SIZE ? CHUNK_SIZE : m_size - m_offset, LZ4_COMPRESSION);
+  #else
+    int ret = LZ4_compress_fast((const char*)(m_framebuf_in + m_offset), (char*)(fTo + CHUNK_HLEN), m_size - m_offset > CHUNK_SIZE ? CHUNK_SIZE : m_size - m_offset, FRAME_SIZE, 10);
+  #endif    
+#else   
+    int ret = m_size - m_offset > CHUNK_SIZE ? CHUNK_SIZE : m_size - m_offset;
+    memcpy((void*)(fTo + CHUNK_HLEN), (void*)(m_framebuf_in + m_offset), ret);
+#endif
     fFrameSize += ret;
+    ch->size = fFrameSize;
     m_offset += CHUNK_SIZE;
     m_out_size += fFrameSize;
 

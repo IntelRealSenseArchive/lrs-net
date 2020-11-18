@@ -22,6 +22,8 @@ public:
         return new RsDeviceSource(t_env, pqs);
     };
 
+    virtual char const* MIMEtype() const { return "video/LZ4"; };
+
 protected:
     RsDeviceSource(UsageEnvironment& t_env, frames_queue* pqs) : FramedSource(t_env), m_pqs(pqs) {};
 
@@ -33,13 +35,17 @@ protected:
 private:
     virtual void doGetNextFrame() {
         if (isCurrentlyAwaitingData()) {
-            uint8_t* frame = m_pqs->get_frame((void*)this);
-            if (frame) {
+            FrameData frame = m_pqs->get_frame((void*)this);
+            if (frame != nullptr) {
                 // we have got the data
                 gettimeofday(&fPresentationTime, NULL); // If you have a more accurate time - e.g., from an encoder - then use that instead.
 
+#if 0
                 fFrameSize = m_pqs->get_size();
-                memcpy(fTo, frame, fFrameSize);
+#else                
+                fFrameSize = *(uint32_t*)frame.get();
+#endif                
+                memcpy(fTo, frame.get(), fFrameSize);
                 
                 afterGetting(this); // After delivering the data, inform the reader that it is now available:
             } else {

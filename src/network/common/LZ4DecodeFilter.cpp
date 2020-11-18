@@ -4,6 +4,11 @@
 #include <iostream>
 #include <iomanip>
 
+#include <zstd.h>
+#include <zstd_errors.h>
+
+#include <lz4.h>
+
 LZ4DecodeFilter::LZ4DecodeFilter(UsageEnvironment& t_env, FramedSource* source) 
     : FramedFilter(t_env, source), m_frame_count(0), m_processing(0), m_size(0), m_offset(0), m_total_size(0)  { 
     m_framebuf_in  = new uint8_t[FRAME_SIZE];
@@ -38,6 +43,12 @@ void LZ4DecodeFilter::afterGettingFrame(unsigned frameSize, unsigned numTruncate
     // static uint32_t fnum = 1;
     // char fname[32] = {0};
     // FILE* f = 0;
+#define CHUNK_SIZE (2*1024)
+    typedef struct chunk_header{
+        uint32_t size;
+        uint32_t offset;
+    } chunk_header_t;
+#define CHUNK_HLEN (sizeof(chunk_header_t))
 
     if (!m_processing) {
         // new frame arrived, let's store it's params
@@ -51,10 +62,20 @@ void LZ4DecodeFilter::afterGettingFrame(unsigned frameSize, unsigned numTruncate
     }
 
     // we have the reminds of the old frame to receive
+    chunk_header_t* ch = (chunk_header_t*)m_framebuf_in;
+
     m_total_size += frameSize;
-    m_offset = *(uint32_t*)m_framebuf_in;
-#define CHUNK_SIZE (2*1024)
-    int ret = ZSTD_decompress((void*)(m_framebuf_out + m_offset), CHUNK_SIZE, (void*)(m_framebuf_in + sizeof(uint32_t)), frameSize - sizeof(uint32_t));
+    m_offset = ch->offset;
+#if 0    
+  #if 0    
+    int ret = ZSTD_decompress((void*)(m_framebuf_out + m_offset), CHUNK_SIZE, (void*)(m_framebuf_in + CHUNK_HLEN), frameSize - CHUNK_HLEN);
+  #else
+    int ret = LZ4_decompress_fast((const char*)(m_framebuf_in + CHUNK_HLEN), (char*)(m_framebuf_out + m_offset), CHUNK_SIZE);
+  #endif    
+#else
+    int ret = frameSize - CHUNK_HLEN;
+    memcpy((void*)(m_framebuf_out + m_offset), (void*)(m_framebuf_in + CHUNK_HLEN), ret);
+#endif
     m_offset += CHUNK_SIZE;
 
     if (m_offset < FRAME_SIZE) {

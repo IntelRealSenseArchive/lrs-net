@@ -55,8 +55,12 @@ protected:
         RsDeviceSource* rs_source = RsDeviceSource::createNew(envir(), m_queue);
         return JPEGEncodeFilter::createNew(envir(), rs_source);
 #elif defined(ENCODER_LZ4)
+  #if 0
         RsDeviceSource* rs_source = RsDeviceSource::createNew(envir(), m_queue);
         return LZ4EncodeFilter::createNew(envir(), rs_source);
+  #else        
+        return RsDeviceSource::createNew(envir(), m_queue); 
+  #endif        
 #else
         return RsDeviceSource::createNew(envir(), m_queue);
 #endif

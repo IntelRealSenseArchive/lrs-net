@@ -7,17 +7,35 @@
 #include <iomanip>
 #include <queue>
 #include <map>
+#include <chrono>
+#include <memory>
+#include <utility>
 
 #include <librealsense2/rs.hpp>
 
-typedef std::map<void*, std::queue<uint8_t*>*> consumer_queue_map;
+#include <zstd.h>
+#include <zstd_errors.h>
+
+using FrameData     = std::shared_ptr<uint8_t[]>;
+using FrameDataQ    = std::shared_ptr<std::queue<FrameData>>;
+using ConsumerQMap  = std::map<void*, FrameDataQ>;
+using ConsumerQPair = std::pair<void*, FrameDataQ>;
+
+////////////////////////////////////////////////////////////
+
+#define CHUNK_SIZE (2*1024)
+typedef struct chunk_header{
+    uint32_t size;
+    uint32_t offset;
+} chunk_header_t;
+#define CHUNK_HLEN (sizeof(chunk_header_t))
 
 class frames_queue {
 public:
     frames_queue(rs2::sensor sensor, rs2::video_stream_profile stream)
         : m_sensor(sensor), m_stream(stream) {};
    ~frames_queue() { 
-        for (std::map<void*, std::queue<uint8_t*>*>::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
+        for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
             stop(it->first);
     }; // TODO: improve
 
@@ -30,13 +48,13 @@ public:
     uint32_t get_width()  { return m_stream.width();  };
     uint32_t get_height() { return m_stream.height(); };
 
-    uint32_t get_size()   { return get_width() * get_height() * 2; /* Color is 2 BPP */ };
+    uint32_t get_size()   { return 640*480*2; };
 
-    uint8_t* get_frame(void* consumer)  { 
+    FrameData get_frame(void* consumer)  { 
         if (m_queues.find(consumer) == m_queues.end()) {
             // new consumer - allocate the queue for it
-            std::queue<uint8_t*>* q = new std::queue<uint8_t*>;
-            m_queues.insert(std::pair<void*, std::queue<uint8_t*>*>(consumer, q));
+            FrameDataQ q(new std::queue<FrameData>);
+            m_queues.insert(ConsumerQPair(consumer, q));
         }
 
         if (!is_streaming()) {
@@ -48,14 +66,60 @@ public:
             m_sensor.open(m_stream);
 
             auto callback = [&](const rs2::frame& frame) {
-                //push frame to its queue
-                for (std::map<void*, std::queue<uint8_t*>*>::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
-                    (it->second)->push((uint8_t*)frame.get_data());
+#if 1                
+                static uint32_t frame_count = 0;    
+                static std::chrono::_V2::system_clock::time_point beginning = std::chrono::system_clock::now();
+
+                auto start = std::chrono::system_clock::now();
+
+                uint8_t* data = (uint8_t*)frame.get_data();
+                uint32_t size = frame.get_data_size();
+
+                uint32_t offset = 0;
+                uint32_t out_size = 0;
+
+                while (offset < size) {
+                    FrameData chunk(new uint8_t[CHUNK_SIZE + CHUNK_HLEN]);
+                    chunk_header_t* ch = (chunk_header_t*)chunk.get();
+                    ch->offset = offset;
+                    ch->size   = sizeof(chunk_header_t);
+  #if 0                    
+                    ch->size  += ZSTD_compress((void*)(chunk.get() + CHUNK_HLEN), CHUNK_SIZE, (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, 1);
+  #else
+                    memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset);
+                    ch->size  += CHUNK_SIZE;
+  #endif                    
+                    out_size  += ch->size;
+                    offset    += CHUNK_SIZE;
+
+                    // push the chunk to queues
+                    for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
+                        (it->second)->push(chunk);
+                }
+
+                auto end = std::chrono::system_clock::now();
+                std::chrono::duration<double> elapsed = end - start;
+                std::chrono::duration<double> total_time = end - beginning;
+                frame_count++;
+                double fps = 0;
+                if (total_time.count() > 0) fps = (double)frame_count / (double)total_time.count();
+                std::cout << "Frame compression time " << std::fixed << std::setw(5) << std::setprecision(2) 
+                          << elapsed.count() * 1000 << "ms,\tsize " << size << " => " << out_size << " (" << (float)(size) / (float)out_size << " ), FPS: " << fps << "\n";
+#else
+                uint8_t* data = (uint8_t*)frame.get_data();
+                uint32_t size = frame.get_data_size();
+                FrameData chunk(new uint8_t[size]);
+                memcpy(chunk.get(), data, size);
+                // push the chunk to queues
+                for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
+                    (it->second)->push(chunk);
+
+#endif                          
             };
             m_sensor.start(callback);            
         }
 
-        uint8_t* frame = NULL;
+        FrameData frame = nullptr;
         if (!m_queues[consumer]->empty()) {
             frame = m_queues[consumer]->front();
             m_queues[consumer]->pop(); 
@@ -65,7 +129,6 @@ public:
     };
 
     uint32_t stop(void* consumer) { 
-        delete m_queues[consumer];
         m_queues.erase(consumer);
         if (m_queues.empty() && is_streaming()) {
             m_sensor.stop();
@@ -77,6 +140,5 @@ private:
     rs2::sensor               m_sensor;
     rs2::video_stream_profile m_stream;
 
-    std::queue<uint8_t*> m_queue;
-    std::map<void*, std::queue<uint8_t*>*> m_queues;
+    ConsumerQMap  m_queues;
 };
