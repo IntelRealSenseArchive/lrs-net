@@ -58,10 +58,8 @@ public:
 //    RsRtsp* rtsp_client; // TODO: get smart ptr from rtsp client creator
 };
 
-// Define a data sink (a subclass of "MediaSink") to receive the data for each subsession (i.e., each audio or video 'substream').
-// In practice, this might be a class (or a chain of classes) that decodes and then renders the incoming audio or video.
-// Or it might be a "FileSink", for outputting the received data into a file (as is done by the "openRTSP" application).
-// In this example code, however, we define a simple 'dummy' sink that receives incoming data, but does nothing with it.
+// #define COMPRESSION_ENABLED
+// #define COMPRESSION_ZSTD
 
 #define CHUNK_SIZE (2048)
 typedef struct chunk_header{
@@ -168,6 +166,8 @@ private:
 
     std::mutex m_mutex;
     std::condition_variable m_init_done;
+
+    uint8_t* m_frame_raw;
 
     // bool is_device_alive;
 

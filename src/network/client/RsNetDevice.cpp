@@ -22,6 +22,11 @@
 #include "LZ4DecodeFilter.h"
 #include "LZ4VideoRTPSource.h"
 
+#include <zstd.h>
+#include <zstd_errors.h>
+
+#include <lz4.h>
+
 using namespace std::placeholders;
 
 ////
@@ -215,13 +220,14 @@ void* rs_net_device::doRTP() {
 }
 
 void rs_net_device::doDevice() try {
-    static uint32_t m_frame_count = 0;
-    static auto m_beginning = std::chrono::system_clock::now();
+    static uint32_t fps_frame_count = 0;
+    static auto beginning = std::chrono::system_clock::now();
 
     std::cout << "RGB sensor support thread started" << std::endl;
 
     int frame_count = 0; 
     bool prev_sensor_state = false;
+
     while (m_eventLoopWatchVariable == 0) {
         auto user_streams = rgb->get_active_streams();
         bool current_sensor_state = (user_streams.size() > 0);
@@ -267,51 +273,59 @@ void rs_net_device::doDevice() try {
 #if 0                    
                         uint8_t* frame_raw = sink->getFrame(); // get the raw frame
 #else
-                        uint8_t* frame_raw = new uint8_t[640*480*2];
-
                         auto start = std::chrono::system_clock::now();
 
                         uint32_t size = 0;
-                        uint32_t m_offset = 0;
-                        uint32_t m_total_size = 0;
+                        uint32_t offset = 0;
+                        uint32_t total_size = 0;
 
-                        while (m_offset < FRAME_SIZE) {
+                        while (offset < FRAME_SIZE) {
                             uint8_t* data = 0;
                             while ( !(data = sink->getFrame()) ) {
                                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                             }
                             chunk_header_t* ch = (chunk_header_t*)data;
 
-                            if (ch->offset < m_offset) break;
+                            if (ch->offset < offset) break;
 
-                            m_total_size += ch->size;
-                            m_offset = ch->offset;
-    #if 0    
-        #if 0    
-                            int ret = ZSTD_decompress((void*)(frame_raw + m_offset), CHUNK_SIZE, (void*)(data + CHUNK_HLEN), ch->size - CHUNK_HLEN);
+                            total_size += ch->size;
+                            offset = ch->offset;
+    #ifdef COMPRESSION_ENABLED    
+        #ifdef COMPRESSION_ZSTD    
+                            int ret = ZSTD_decompress((void*)(m_frame_raw + offset), CHUNK_SIZE, (void*)(data + CHUNK_HLEN), ch->size - CHUNK_HLEN);
         #else
-                            int ret = LZ4_decompress_fast((const char*)(data + CHUNK_HLEN), (char*)(frame_raw + m_offset), CHUNK_SIZE);
+                            int ret = LZ4_decompress_safe((const char*)(data + CHUNK_HLEN), (char*)(m_frame_raw + offset), ch->size - CHUNK_HLEN, CHUNK_SIZE);
+                            ret = ch->size - CHUNK_HLEN;
         #endif    
     #else
                             int ret = ch->size - CHUNK_HLEN;
-                            memcpy((void*)(frame_raw + m_offset), (void*)(data + CHUNK_HLEN), ret);
+                            memcpy((void*)(m_frame_raw + offset), (void*)(data + CHUNK_HLEN), ret);
     #endif
                             size += ret;
-                            m_offset += CHUNK_SIZE;
+                            offset += CHUNK_SIZE;
 
                             sink->popFrame();
                             delete [] data;
                         } 
 
+                        uint8_t* frame_raw = new uint8_t[640*480*2];
+                        memcpy(frame_raw, m_frame_raw, FRAME_SIZE);
+
                         auto end = std::chrono::system_clock::now();
-                        std::chrono::duration<double> elapsed = end-start;
-                        std::chrono::duration<double> total_time = end-m_beginning;
-                        m_frame_count++;
+                        std::chrono::duration<double> elapsed = end - start;
+                        std::chrono::duration<double> total_time = end - beginning;
+                        fps_frame_count++;
                         double fps;
-                        if (total_time.count() > 0) fps = (double)m_frame_count / (double)total_time.count();
+                        if (total_time.count() > 0) fps = (double)fps_frame_count / (double)total_time.count();
                         else fps = 0;
-                        std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) << elapsed.count() * 1000 << " ms, size " << m_total_size << " => " << size << ", FPS: " << fps << "\n";
-                            
+                        std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) 
+                                                                 << elapsed.count() * 1000 << " ms, size " << total_size << " => " << size << ", FPS: " << fps << "\n";                            
+
+                        if (total_time > std::chrono::seconds(1)) {
+                            beginning = std::chrono::system_clock::now();
+                            fps_frame_count = 0;
+                        }
+
 #endif                        
                         if (frame_raw) {
                             // send it into device
@@ -384,6 +398,7 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
     // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 2, 29, 640, 480, 30, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
     sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 3, 39, 640, 480, 60, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
 
+    m_frame_raw = new uint8_t[640*480*2];
     m_dev = std::thread( [this](){ doDevice(); } ); 
 }
 
@@ -392,6 +407,8 @@ rs_net_device::~rs_net_device()
     m_eventLoopWatchVariable = 1;
     if (m_rtp.joinable()) m_rtp.join();
     if (m_dev.joinable()) m_dev.join();
+
+    delete [] m_frame_raw;
 }
 
 void RSRTSPClient::shutdownStream()

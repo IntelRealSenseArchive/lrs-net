@@ -19,6 +19,8 @@
 #include <zstd.h>
 #include <zstd_errors.h>
 
+#include <lz4.h>
+
 using FrameData     = std::shared_ptr<uint8_t[]>;
 using FrameDataQ    = std::shared_ptr<std::queue<FrameData>>;
 using ConsumerQMap  = std::map<void*, FrameDataQ>;
@@ -86,8 +88,12 @@ public:
                     chunk_header_t* ch = (chunk_header_t*)chunk.get();
                     ch->offset = offset;
                     ch->size   = sizeof(chunk_header_t);
-  #if 0                    
+  #ifdef COMPRESSION_ENABLED
+    #ifdef COMPRESSION_ZSTD                    
                     ch->size  += ZSTD_compress((void*)(chunk.get() + CHUNK_HLEN), CHUNK_SIZE, (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, 1);
+    #else
+                    ch->size  += LZ4_compress_fast((const char*)(data + offset), (char*)(chunk.get() + CHUNK_HLEN), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, CHUNK_SIZE, 10);
+    #endif
   #else
                     memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset);
                     ch->size  += CHUNK_SIZE;
@@ -111,6 +117,12 @@ public:
                 if (total_time.count() > 0) fps = (double)frame_count / (double)total_time.count();
                 std::cout << "Frame compression time " << std::fixed << std::setw(5) << std::setprecision(2) 
                           << elapsed.count() * 1000 << "ms,\tsize " << size << " => " << out_size << " (" << (float)(size) / (float)out_size << " ), FPS: " << fps << "\n";
+                
+                if (total_time > std::chrono::seconds(1)) {
+                    beginning = std::chrono::system_clock::now();
+                    frame_count = 0;
+                }
+
 #else
                 uint8_t* data = (uint8_t*)frame.get_data();
                 uint32_t size = frame.get_data_size();
