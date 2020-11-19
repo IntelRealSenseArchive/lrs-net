@@ -281,6 +281,9 @@ void rs_net_device::doDevice() try {
                                 std::this_thread::sleep_for(std::chrono::milliseconds(1));
                             }
                             chunk_header_t* ch = (chunk_header_t*)data;
+
+                            if (ch->offset < m_offset) break;
+
                             m_total_size += ch->size;
                             m_offset = ch->offset;
     #if 0    
@@ -296,6 +299,7 @@ void rs_net_device::doDevice() try {
                             size += ret;
                             m_offset += CHUNK_SIZE;
 
+                            sink->popFrame();
                             delete [] data;
                         } 
 
@@ -1073,12 +1077,13 @@ uint8_t* RSSink::getFrame() {
     uint8_t* frame = {0};
 
     std::lock_guard<std::mutex> lck (m_frames_mutex);
-    if (!m_frames.empty())
-    {
-        frame = m_frames.front();
-        m_frames.pop();
-    }
+    if (!m_frames.empty()) frame = m_frames.front();
 
     return frame;
+}
+
+void RSSink::popFrame() {
+    std::lock_guard<std::mutex> lck (m_frames_mutex);
+    if (!m_frames.empty()) m_frames.pop();
 }
 

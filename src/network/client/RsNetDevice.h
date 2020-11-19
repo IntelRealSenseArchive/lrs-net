@@ -78,6 +78,7 @@ public:
                                 char const* streamId = NULL); // identifies the stream itself (optional)
 
     uint8_t* getFrame();
+    void     popFrame();
 
 private:
     RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId); // called only by "createNew()"
