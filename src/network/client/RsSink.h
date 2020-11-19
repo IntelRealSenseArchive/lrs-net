@@ -1,3 +1,4 @@
+#if 0 
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2020 Intel Corporation. All Rights Reserved.
 
@@ -50,3 +51,4 @@ private:
     std::shared_ptr<ICompression> m_iCompress;
     std::vector<FramedSource::afterGettingFunc*> m_afterGettingFunctions;
 };
+#endif

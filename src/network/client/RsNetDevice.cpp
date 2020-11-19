@@ -215,6 +215,9 @@ void* rs_net_device::doRTP() {
 }
 
 void rs_net_device::doDevice() try {
+    static uint32_t m_frame_count = 0;
+    static auto m_beginning = std::chrono::system_clock::now();
+
     std::cout << "RGB sensor support thread started" << std::endl;
 
     int frame_count = 0; 
@@ -261,7 +264,51 @@ void rs_net_device::doDevice() try {
                 if (m_rtspClient->m_scs.subsession) {
                     RSSink* sink = (RSSink*)m_rtspClient->m_scs.subsession->sink;
                     if (sink) { // the session might be not created yet
+#if 0                    
                         uint8_t* frame_raw = sink->getFrame(); // get the raw frame
+#else
+                        uint8_t* frame_raw = new uint8_t[640*480*2];
+
+                        auto start = std::chrono::system_clock::now();
+
+                        uint32_t size = 0;
+                        uint32_t m_offset = 0;
+                        uint32_t m_total_size = 0;
+
+                        while (m_offset < FRAME_SIZE) {
+                            uint8_t* data = 0;
+                            while ( !(data = sink->getFrame()) ) {
+                                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                            }
+                            chunk_header_t* ch = (chunk_header_t*)data;
+                            m_total_size += ch->size;
+                            m_offset = ch->offset;
+    #if 0    
+        #if 0    
+                            int ret = ZSTD_decompress((void*)(frame_raw + m_offset), CHUNK_SIZE, (void*)(data + CHUNK_HLEN), ch->size - CHUNK_HLEN);
+        #else
+                            int ret = LZ4_decompress_fast((const char*)(data + CHUNK_HLEN), (char*)(frame_raw + m_offset), CHUNK_SIZE);
+        #endif    
+    #else
+                            int ret = ch->size - CHUNK_HLEN;
+                            memcpy((void*)(frame_raw + m_offset), (void*)(data + CHUNK_HLEN), ret);
+    #endif
+                            size += ret;
+                            m_offset += CHUNK_SIZE;
+
+                            delete [] data;
+                        } 
+
+                        auto end = std::chrono::system_clock::now();
+                        std::chrono::duration<double> elapsed = end-start;
+                        std::chrono::duration<double> total_time = end-m_beginning;
+                        m_frame_count++;
+                        double fps;
+                        if (total_time.count() > 0) fps = (double)m_frame_count / (double)total_time.count();
+                        else fps = 0;
+                        std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) << elapsed.count() * 1000 << " ms, size " << m_total_size << " => " << size << ", FPS: " << fps << "\n";
+                            
+#endif                        
                         if (frame_raw) {
                             // send it into device
                             rgb->on_video_frame(
@@ -276,7 +323,7 @@ void rs_net_device::doDevice() try {
                                     *sp
                                 }
                             );
-                        }        
+                        }
                     } else std::cout << "No sink exists yet\n";
                 } // else std::cout << "No subsession exists yet\n";
             } else std::cout << "No client exists yet\n";
@@ -451,40 +498,36 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
                 useSpecialRTPoffset = 0;
             }
 
-            if(!m_scs.subsession->initiate(useSpecialRTPoffset))
-            {
+            if (!m_scs.subsession->initiate(useSpecialRTPoffset)) {
                 std::cout << "Failed to initiate the \"" << m_scs.subsession->controlPath() << "\" subsession: " << envir().getResultMsg() << "\n";
-            }
-            else
-            {
+            } else {
                 std::cout << "Initiated the '" << std::setw(10) << m_scs.subsession->controlPath() << "' " 
                                                << m_scs.subsession->mediumName()   << "/" 
                                                << m_scs.subsession->protocolName() << "/" 
                                                << m_scs.subsession->videoWidth() << "x" << m_scs.subsession->videoHeight() << "x" << m_scs.subsession->videoFPS() << " subsession (";
-                if(m_scs.subsession->rtcpIsMuxed())
-                {
+                if (m_scs.subsession->rtcpIsMuxed()) {
                     std::cout << "client port " << m_scs.subsession->clientPortNum();
-                }
-                else
-                {
+                } else {
                     std::cout << "client ports " << m_scs.subsession->clientPortNum() << "-" << m_scs.subsession->clientPortNum() + 1;
                 }
                 std::cout << ") [" << m_scs.subsession->readSource()->name() << " : " << m_scs.subsession->readSource()->MIMEtype() << "]\n";
 
-#define ENCODER_LZ4
+#if 0
+#  define ENCODER_LZ4
 
-#if   defined(ENCODER_JPEG) // JPEG filter 
+#  if   defined(ENCODER_JPEG) // JPEG filter 
                 FramedFilter* jpeg = JPEGDecodeFilter::createNew(envir(), m_scs.subsession->readSource());
                 m_scs.subsession->addFilter(jpeg);
                 std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
-#elif defined(ENCODER_JPEG2000) // JPEG2000 filter 
+#  elif defined(ENCODER_JPEG2000) // JPEG2000 filter 
                 FramedFilter* jpeg2000 = JPEG2000DecodeFilter::createNew(envir(), m_scs.subsession->readSource());
                 m_scs.subsession->addFilter(jpeg2000);
                 std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
-#elif defined(ENCODER_LZ4) // LZ4 filter 
+#  elif defined(ENCODER_LZ4) // LZ4 filter 
                 FramedFilter* lz4 = LZ4DecodeFilter::createNew(envir(), m_scs.subsession->readSource());
                 m_scs.subsession->addFilter(lz4);
                 std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
+#  endif
 #endif
 
                 // do not wait for the out of order packets
@@ -970,10 +1013,8 @@ void rs_net_device::inject_frames_loop(std::shared_ptr<rs_rtp_stream> rtp_stream
 
 
 // Implementation of "RSSink":
-
-// Even though we're not going to be doing anything with the incoming data, we still need to receive it.
-// Define the size of the buffer that we'll use:
-#define RS_SINK_RECEIVE_BUFFER_SIZE 1048576
+// #define RS_SINK_RECEIVE_BUFFER_SIZE 1048576
+#define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_SIZE + CHUNK_HLEN)
 
 RSSink* RSSink::createNew(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId)
 {

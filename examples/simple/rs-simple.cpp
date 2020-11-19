@@ -49,6 +49,7 @@ int main(int argc, char * argv[]) try
         // Collect the new frames from all the connected devices
         try {
             rs2::frameset fs = pipe.wait_for_frames(1000);
+#if 1            
             app.show(fs.apply_filter(yuv));
             num_frames++;
             auto end = std::chrono::system_clock::now();
@@ -59,6 +60,7 @@ int main(int argc, char * argv[]) try
                 display_fps += std::to_string(fps);
                 draw_text(30, 50, display_fps.c_str());
             }
+#endif            
         } catch (...) {
             std::cout << "Timeout waiting for the frame" << std::endl;
         }

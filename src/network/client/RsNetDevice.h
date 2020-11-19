@@ -63,6 +63,13 @@ public:
 // Or it might be a "FileSink", for outputting the received data into a file (as is done by the "openRTSP" application).
 // In this example code, however, we define a simple 'dummy' sink that receives incoming data, but does nothing with it.
 
+#define CHUNK_SIZE (2048)
+typedef struct chunk_header{
+    uint32_t size;
+    uint32_t offset;
+} chunk_header_t;
+#define CHUNK_HLEN (sizeof(chunk_header_t))
+
 class RSSink : public MediaSink
 {
 public:

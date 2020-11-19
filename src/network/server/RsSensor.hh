@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <../client/RsNetDevice.h>
+
 #include <iostream>
 #include <iomanip>
 #include <queue>
@@ -10,6 +12,7 @@
 #include <chrono>
 #include <memory>
 #include <utility>
+#include <mutex>
 
 #include <librealsense2/rs.hpp>
 
@@ -23,12 +26,12 @@ using ConsumerQPair = std::pair<void*, FrameDataQ>;
 
 ////////////////////////////////////////////////////////////
 
-#define CHUNK_SIZE (2*1024)
-typedef struct chunk_header{
-    uint32_t size;
-    uint32_t offset;
-} chunk_header_t;
-#define CHUNK_HLEN (sizeof(chunk_header_t))
+// #define CHUNK_SIZE (2*1024)
+// typedef struct chunk_header{
+//     uint32_t size;
+//     uint32_t offset;
+// } chunk_header_t;
+// #define CHUNK_HLEN (sizeof(chunk_header_t))
 
 class frames_queue {
 public:
@@ -93,8 +96,11 @@ public:
                     offset    += CHUNK_SIZE;
 
                     // push the chunk to queues
-                    for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
+                    for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it) 
+                    {
+                        std::lock_guard<std::mutex> lck (m_queues_mutex);
                         (it->second)->push(chunk);
+                    }
                 }
 
                 auto end = std::chrono::system_clock::now();
@@ -120,7 +126,9 @@ public:
         }
 
         FrameData frame = nullptr;
-        if (!m_queues[consumer]->empty()) {
+        if (!m_queues[consumer]->empty()) 
+        {
+            std::lock_guard<std::mutex> lck (m_queues_mutex);
             frame = m_queues[consumer]->front();
             m_queues[consumer]->pop(); 
         }
@@ -140,5 +148,6 @@ private:
     rs2::sensor               m_sensor;
     rs2::video_stream_profile m_stream;
 
+    std::mutex m_queues_mutex;
     ConsumerQMap  m_queues;
 };
