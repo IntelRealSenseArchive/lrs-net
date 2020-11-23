@@ -5,9 +5,120 @@
 
 #include <liveMedia.hh>
 #include <GroupsockHelper.hh>
-#include "BasicUsageEnvironment.hh"
+#include <BasicUsageEnvironment.hh>
+#include <RTSPCommon.hh>
 
 #include <librealsense2/rs.hpp>
+
+class RsRTSPServer : public RTSPServer {
+public:
+    static RsRTSPServer* createNew(UsageEnvironment& env, Port port = 554) {
+        int socket = setUpOurSocket(env, port);
+        if (socket == -1) return NULL;
+
+        return new RsRTSPServer(env, socket, port);
+    }
+
+private:
+    RsRTSPServer(UsageEnvironment& env, int socket, Port port) : RTSPServer(env, socket, port, NULL, 65) {
+        rs2::context ctx;
+        for (auto&& dev : ctx.query_devices()) {
+            m_serials += dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+            m_serials += "\r\n";
+        }
+        std::cout << "Handling the following cameras: " << std::endl << m_serials;
+    };
+    virtual ~RsRTSPServer() {};
+
+protected:
+    char const* allowedCommandNames() {
+        return "OPTIONS, DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE, GET_PARAMETER, SET_PARAMETER, LIST, CAPABILITIES, GET_OPTION, SET_OPTION";
+    };
+
+public:
+    class RsRTSPClientConnection: public RTSPServer::RTSPClientConnection {
+    protected:
+        RsRTSPClientConnection(RsRTSPServer& ourServer, int clientSocket, struct sockaddr_in clientAddr)
+            : RTSPServer::RTSPClientConnection(ourServer, clientSocket, clientAddr), m_parent(ourServer) {};
+        virtual ~RsRTSPClientConnection() {};
+
+        friend class RsRTSPServer;
+        // catch unsupported commands here
+        virtual void handleCmd_bad() {
+            // Don't do anything with "fCurrentCSeq", because it might be nonsense
+            std::cout << "Bad command" << "\n";
+            RTSPServer::RTSPClientConnection::handleCmd_bad();
+        };
+
+        virtual void handleCmd_notSupported() {
+            // Parse the request string into command name and 'CSeq', then handle the command:
+            fRequestBuffer[fRequestBytesAlreadySeen] = '\0';
+            char cmdName[RTSP_PARAM_STRING_MAX];
+            char urlPreSuffix[RTSP_PARAM_STRING_MAX];
+            char urlSuffix[RTSP_PARAM_STRING_MAX];
+            char cseq[RTSP_PARAM_STRING_MAX];
+            char sessionIdStr[RTSP_PARAM_STRING_MAX];
+            unsigned contentLength = 0;
+            Boolean playAfterSetup = False;
+            fLastCRLF[2] = '\0'; // temporarily, for parsing
+            Boolean parseSucceeded = parseRTSPRequestString((char*)fRequestBuffer, fLastCRLF + 2 - fRequestBuffer, cmdName, sizeof cmdName, urlPreSuffix, sizeof urlPreSuffix, urlSuffix, sizeof urlSuffix, cseq, sizeof cseq, sessionIdStr, sizeof sessionIdStr, contentLength);
+            fLastCRLF[2] = '\r'; // restore its value
+
+            if (strcmp(cmdName, "LIST") == 0) {
+                // std::string url;
+                // if (urlPreSuffix[0] != '\0') {
+                //     url += urlPreSuffix;
+                //     url += "/";
+                // }
+                // url += urlSuffix;
+                // ServerMediaSession* session = fOurServer.lookupServerMediaSession(url.c_str());
+                // if(session == NULL) {
+                //     handleCmd_notFound();
+                // } else {
+                //     session->incrementReferenceCount();
+
+                    snprintf((char*)fResponseBuffer,
+                        sizeof fResponseBuffer,
+                        "RTSP/1.0 200 OK\r\nCSeq: %s\r\n"
+                        "%s"
+                //      "Content-Base: %s/\r\n"
+                        "Content-Type: text/plain\r\n"
+                        "Content-Length: %lu\r\n\r\n"
+                        "%s",
+                        fCurrentCSeq,
+                        dateHeader(),
+                //      fOurRTSPServer.rtspURL(session, fClientInputSocket),
+                        m_parent.m_serials.length(),
+                        m_parent.m_serials.c_str());
+
+                //     session->decrementReferenceCount();
+                //     if(session->referenceCount() == 0 && session->deleteWhenUnreferenced()) {
+                //         fOurServer.removeServerMediaSession(session);
+                //     }
+                // }
+            } else {
+                RTSPServer::RTSPClientConnection::handleCmd_notSupported();
+            }
+        };
+
+        void handleCmd_conflict() {
+            setRTSPResponse("409 Conflict");
+        };
+
+    private:
+        RsRTSPServer& m_parent;
+    };
+
+protected: // redefined virtual functions
+    friend class RsRTSPClientConnection;
+
+    virtual ClientConnection* createNewClientConnection(int clientSocket, struct sockaddr_in clientAddr) {
+        return new RsRTSPClientConnection(*this, clientSocket, clientAddr);
+    }
+
+protected:
+    std::string m_serials;
+};
 
 class server
 {
@@ -22,7 +133,7 @@ private:
     UsageEnvironment* env;
     TaskScheduler* scheduler;
 
-    RTSPServer* RSServer;
+    RsRTSPServer* srv;
 
     // std::vector<rs2::video_stream_profile> supported_stream_profiles; // streams for extrinsics map creation
 

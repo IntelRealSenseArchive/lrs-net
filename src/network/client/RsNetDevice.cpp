@@ -142,56 +142,6 @@ StreamClientState::~StreamClientState()
     }
 }
 
-/*
-extern std::map<std::pair<int, int>, rs2_extrinsics> minimal_extrinsics_map;
-
-std::string sensors_str[] = {STEREO_SENSOR_NAME, RGB_SENSOR_NAME};
-
-//WA for stop
-void rs_net_device::recover_rtsp_client(int sensor_index)
-{
-    remote_sensors[sensor_index]->rtsp_client = RsRTSPClient::createNew(std::string("rtsp://" + ip_address + ":" + std::to_string(ip_port) + "/" + sensors_str[sensor_index]).c_str(), "rs_network_device", 0, sensor_index);
-
-    ((RsRTSPClient*)remote_sensors[sensor_index]->rtsp_client)->initFunc();
-    ((RsRTSPClient*)remote_sensors[sensor_index]->rtsp_client)->getStreams();
-}
-
-rs_net_device::~rs_net_device()
-{
-    try
-    {
-        is_device_alive = false;
-
-        if(sw_device_status_check.joinable())
-        {
-            sw_device_status_check.join();
-        }
-
-        for(int remote_sensor_index = 0; remote_sensor_index < NUM_OF_SENSORS; remote_sensor_index++)
-        {
-            update_sensor_state(remote_sensor_index, {}, false);
-            delete(remote_sensors[remote_sensor_index]);
-        }
-    }
-    catch(const std::exception& e)
-    {
-        LOG_ERROR(e.what());
-    }
-}
-
-void rs_net_device::stop_sensor_streams(int sensor_index)
-{
-    for(long long int key : remote_sensors[sensor_index]->active_streams_keys)
-    {
-        LOG_DEBUG("Stopping stream [uid:key] " << streams_collection[key].get()->m_rs_stream.uid << ":" << key << "]");
-        streams_collection[key].get()->is_enabled = false;
-        if(inject_frames_thread[key].joinable())
-            inject_frames_thread[key].join();
-    }
-    remote_sensors[sensor_index]->active_streams_keys.clear();
-}
-*/
-
 void* rs_net_device::doRTP() {
     std::cout << "RTP support thread started: " << pthread_self() << std::endl;
 
@@ -214,12 +164,12 @@ void* rs_net_device::doRTP() {
         throw std::runtime_error("Cannot create RTSP client");
     }
 
-    m_rtspClient->sendDescribeCommand(RSRTSPClient::continueAfterDESCRIBE);
+    m_rtspClient->sendListCommand(RSRTSPClient::continueAfterLIST);
 
     env->taskScheduler().doEventLoop(&m_eventLoopWatchVariable);
 }
 
-uint32_t frames_allocated = 0;
+uint32_t chunks_allocated = 0;
 
 void rs_net_device::doDevice() try {
     static uint32_t fps_frame_count = 0;
@@ -283,9 +233,10 @@ void rs_net_device::doDevice() try {
 
                         while (offset < FRAME_SIZE) {
                             uint8_t* data = 0;
-                            while ( !(data = sink->getFrame()) ) {
-                                std::this_thread::sleep_for(std::chrono::microseconds(100));
-                            }
+                            do {
+                                // std::this_thread::sleep_for(std::chrono::nanoseconds(50));
+                                data = sink->getFrame();
+                            } while (data == 0);
                             chunk_header_t* ch = (chunk_header_t*)data;
 
                             if (ch->offset < offset) break;
@@ -309,7 +260,6 @@ void rs_net_device::doDevice() try {
 
                             sink->popFrame();
                             delete [] data;
-                            frames_allocated--; std::cout << "Frames: " << frames_allocated << "\n"; 
                         } 
 
                         uint8_t* frame_raw = new uint8_t[640*480*2];
@@ -329,6 +279,8 @@ void rs_net_device::doDevice() try {
                             beginning = std::chrono::system_clock::now();
                             fps_frame_count = 0;
                         }
+
+                        std::cout << "Chunks: " << chunks_allocated << "\n"; 
 
 #endif                        
                         if (frame_raw) {
@@ -351,7 +303,7 @@ void rs_net_device::doDevice() try {
             } else std::cout << "No client exists yet\n";
         }
         
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000 / (sp->fps() * 2)));
+        // std::this_thread::sleep_for(std::chrono::milliseconds(1000 / (sp->fps() * 2)));
     }
 
     std::cout << "RGB sensor support thread started" << std::endl;
@@ -455,6 +407,26 @@ void RSRTSPClient::shutdownStream()
     // Note that this will also cause this stream's "StreamClientState" structure to get reclaimed.
 }
 
+unsigned RSRTSPClient::sendListCommand(responseHandler* responseHandler, Authenticator* authenticator) {
+    std::cout << "Sending LIST command" << std::endl;
+
+    if (fCurrentAuthenticator < authenticator) fCurrentAuthenticator = *authenticator;
+    return sendRequest(new RequestRecord(++fCSeq, "LIST", responseHandler));
+}
+
+// static callback
+void RSRTSPClient::continueAfterLIST(RTSPClient* rtspClient, int resultCode, char* resultString)
+{
+    return ((RSRTSPClient*)rtspClient)->continueAfterLIST(resultCode, resultString);
+}
+
+// member
+void RSRTSPClient::continueAfterLIST(int resultCode, char* resultString)
+{
+    std::cout << "Got response for the LIST command: " << std::endl << resultString << std::endl;
+    sendDescribeCommand(RSRTSPClient::continueAfterDESCRIBE);
+}
+
 // static callback
 void RSRTSPClient::continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultString)
 {
@@ -500,10 +472,6 @@ void RSRTSPClient::continueAfterDESCRIBE(int resultCode, char* resultString)
     // An unrecoverable error occurred with this stream.
     shutdownStream();
 }
-
-// By default, we request that the server stream its data using RTP/UDP.
-// If, instead, you want to request that the server stream via RTP-over-TCP, change the following to True:
-#define REQUEST_STREAMING_OVER_TCP False
 
 void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
     // Then, create and set up our data source objects for the session.  We do this by iterating over the session's 'subsessions',
@@ -580,7 +548,7 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
     // Having successfully setup the subsession, create a data sink for it, and call "startPlaying()" on it.
     // (This will prepare the data sink to receive data; the actual flow of data from the client won't start happening until later,
     // after we've sent a RTSP "PLAY" command.)
-    m_scs.subsession->sink = RSSink::createNew(env, *m_scs.subsession, url());
+    m_scs.subsession->sink = RSSink::createNew(env, *m_scs.subsession, url(), m_scs.subsession->videoWidth() * m_scs.subsession->videoHeight() * m_scs.subsession->videoFPS());
 
     // perhaps use your own custom "MediaSink" subclass instead
     if(m_scs.subsession->sink == NULL)
@@ -717,18 +685,17 @@ void RSRTSPClient::subsessionByeHandler(void* clientData, char const* reason)
 // #define RS_SINK_RECEIVE_BUFFER_SIZE 1048576
 #define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_SIZE + CHUNK_HLEN)
 
-RSSink* RSSink::createNew(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId)
+RSSink* RSSink::createNew(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, uint32_t threshold)
 {
-    return new RSSink(env, subsession, streamId);
+    return new RSSink(env, subsession, streamId, threshold);
 }
 
-RSSink::RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId)
-    : MediaSink(env)
-    , fSubsession(subsession)
+RSSink::RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, uint32_t threshold)
+    : MediaSink(env), fSubsession(subsession), m_threshold(threshold)
 {
     fStreamId = strDup(streamId);
     fReceiveBuffer = new u_int8_t[RS_SINK_RECEIVE_BUFFER_SIZE];
-    frames_allocated++;
+    chunks_allocated++;
 }
 
 RSSink::~RSSink()
@@ -753,15 +720,29 @@ void RSSink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, s
     // introducing scope for the lock_guard
     { 
         std::lock_guard<std::mutex> lck (m_frames_mutex);
+        // if (m_threshold / CHUNK_SIZE < m_frames.size()) {
+        //     std::cout << "Dropping " << m_frames.size() << " chunks" << std::endl;
+        //     chunks_allocated -= m_frames.size();
+        //     while (!m_frames.empty()) {
+        //         delete [] m_frames.front();
+        //         m_frames.pop();
+        //     }
+        // }
         m_frames.push(fReceiveBuffer);
+        fReceiveBuffer = new u_int8_t[RS_SINK_RECEIVE_BUFFER_SIZE];
+        chunks_allocated++;
     }
  
     // Then continue, to request the next frame of data:
-    fReceiveBuffer = new u_int8_t[RS_SINK_RECEIVE_BUFFER_SIZE];
-    frames_allocated++;
 
     continuePlaying();
+    // nextTask() = envir().taskScheduler().scheduleDelayedTask(10, (TaskFunc*)getNextFrame, this);
 }
+
+void RSSink::getNextFrame(RSSink* sink) {
+    //// std::cout << "RsDeviceSource::waitForFrame" << std::endl;
+    sink->continuePlaying();
+};
 
 Boolean RSSink::continuePlaying()
 {
@@ -774,16 +755,15 @@ Boolean RSSink::continuePlaying()
 }
 
 uint8_t* RSSink::getFrame() {
-    uint8_t* frame = {0};
-
+    if (m_frames.empty()) return NULL;
     std::lock_guard<std::mutex> lck (m_frames_mutex);
-    if (!m_frames.empty()) frame = m_frames.front();
-
-    return frame;
+    return m_frames.front();;
 }
 
 void RSSink::popFrame() {
+    if (m_frames.empty()) return;
     std::lock_guard<std::mutex> lck (m_frames_mutex);
-    if (!m_frames.empty()) m_frames.pop();
+    m_frames.pop();
+    chunks_allocated--;
 }
 

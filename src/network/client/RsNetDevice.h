@@ -73,28 +73,33 @@ class RSSink : public MediaSink
 public:
     static RSSink* createNew(UsageEnvironment& env,
                                 MediaSubsession& subsession, // identifies the kind of data that's being received
-                                char const* streamId = NULL); // identifies the stream itself (optional)
+                                char const* streamId,        // identifies the stream itself
+                                uint32_t threshold);         // number of stored bytes for the drop
 
     uint8_t* getFrame();
     void     popFrame();
 
 private:
-    RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId); // called only by "createNew()"
+    RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamIdm, uint32_t threshold); // called only by "createNew()"
     virtual ~RSSink();
 
     static void afterGettingFrame(void* clientData, unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds); // callback
     void afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds); // member
 
 private:
+    static void getNextFrame(RSSink* sink);
+
     // redefined virtual functions:
     virtual Boolean continuePlaying();
 
 private:
+    uint32_t m_threshold;
+
     uint8_t* fReceiveBuffer;
     
     std::mutex m_frames_mutex;
     std::queue<uint8_t*> m_frames;
-
+    
     MediaSubsession& fSubsession;
     char* fStreamId;
 };
@@ -108,12 +113,31 @@ protected:
     RSRTSPClient(UsageEnvironment& env, char const* rtspURL); // called only by createNew();
     virtual ~RSRTSPClient();
 
+    virtual Boolean setRequestFields(RequestRecord* request,
+                    char*& cmdURL, Boolean& cmdURLWasAllocated,
+                    char const*& protocolStr,
+                    char*& extraHeaders, Boolean& extraHeadersWereAllocated) {
+        if(strcmp(request->commandName(), "LIST") == 0) {
+            // behave like an OPTIONS command without the session
+            extraHeaders = strDup("");
+            extraHeadersWereAllocated = True;
+            return True;
+        }
+
+        return RTSPClient::setRequestFields(request, cmdURL, cmdURLWasAllocated, protocolStr, extraHeaders, extraHeadersWereAllocated);
+    };
+
 public:
     StreamClientState m_scs;
 
     void startRTPSession(rs2::video_stream_profile stream);
 
     void shutdownStream();
+
+    unsigned sendListCommand(responseHandler* responseHandler, Authenticator* authenticator = NULL);
+
+    static void continueAfterLIST(RTSPClient* rtspClient, int resultCode, char* resultString); // callback
+    void continueAfterLIST(int resultCode, char* resultString); // member
 
     static void continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultString); // callback
     void continueAfterDESCRIBE(int resultCode, char* resultString); // member

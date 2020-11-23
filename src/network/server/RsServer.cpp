@@ -22,15 +22,16 @@ using namespace TCLAP;
 
 server::server(rs2::device dev, std::string addr, int port)
 {
-    ReceivingInterfaceAddr = our_inet_addr(addr.c_str());
+    ReceivingInterfaceAddr = inet_addr(addr.c_str());
     OutPacketBuffer::increaseMaxSizeTo(640*480*2); // TODO: put real values
 
     // Begin by setting up our usage environment:
     scheduler = BasicTaskScheduler::createNew();
     env = BasicUsageEnvironment::createNew(*scheduler);
 
-    RSServer = RTSPServer::createNew(*env, 8554, NULL);
-    if (RSServer == NULL) {
+    // srv = RTSPServer::createNew(*env, 8554, NULL);
+    srv = RsRTSPServer::createNew(*env, 8554);
+    if (srv == NULL) {
         std::cout << "Failed to create RTSP server: " << env->getResultMsg() << std::endl;
         exit(1);
     }
@@ -63,8 +64,8 @@ server::server(rs2::device dev, std::string addr, int port)
             std::cout << "ignored" << std::endl;
         }
 
-        RSServer->addServerMediaSession(sms);
-        char* url = RSServer->rtspURL(sms); // should be deallocated later
+        srv->addServerMediaSession(sms);
+        char* url = srv->rtspURL(sms); // should be deallocated later
         std::cout << "Access\t: " << url << std::endl << std::endl;
 
         delete[] url;
@@ -82,7 +83,7 @@ void server::stop()
 
 server::~server()
 {
-    Medium::close(RSServer);
+    Medium::close(srv);
     env->reclaim();
     env = NULL;
     delete scheduler;
