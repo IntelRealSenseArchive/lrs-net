@@ -523,9 +523,6 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
 #  endif
 #endif
 
-                // do not wait for the out of order packets
-                m_scs.subsession->rtpSource()->setPacketReorderingThresholdTime(0); 
-
                 // Continue setting up this subsession, by sending a RTSP "SETUP" command:
                 sendSetupCommand(*m_scs.subsession, RSRTSPClient::continueAfterSETUP);
                 break;
@@ -549,6 +546,9 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
     // (This will prepare the data sink to receive data; the actual flow of data from the client won't start happening until later,
     // after we've sent a RTSP "PLAY" command.)
     m_scs.subsession->sink = RSSink::createNew(env, *m_scs.subsession, url(), m_scs.subsession->videoWidth() * m_scs.subsession->videoHeight() * m_scs.subsession->videoFPS());
+
+    // do not wait for the out of order packets
+    // m_scs.subsession->rtpSource()->setPacketReorderingThresholdTime(0); 
 
     // perhaps use your own custom "MediaSink" subclass instead
     if(m_scs.subsession->sink == NULL)

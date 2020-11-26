@@ -69,6 +69,7 @@ public:
                                                        << std::setw(15) << get_width() << "x" << get_height() << "x" << get_fps() << std::endl;    
 
             m_sensor.open(m_stream);
+            m_sensor.set_option(RS2_OPTION_AUTO_EXPOSURE_PRIORITY, 0); // TODO: should be removed
 
             auto callback = [&](const rs2::frame& frame) {
 #if 1                
@@ -92,7 +93,8 @@ public:
     #ifdef COMPRESSION_ZSTD                    
                     ch->size  += ZSTD_compress((void*)(chunk.get() + CHUNK_HLEN), CHUNK_SIZE, (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, 1);
     #else
-                    ch->size  += LZ4_compress_fast((const char*)(data + offset), (char*)(chunk.get() + CHUNK_HLEN), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, CHUNK_SIZE, 10);
+                    // ch->size  += LZ4_compress_fast((const char*)(data + offset), (char*)(chunk.get() + CHUNK_HLEN), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, CHUNK_SIZE, 10);
+                    ch->size  += LZ4_compress_default((const char*)(data + offset), (char*)(chunk.get() + CHUNK_HLEN), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, CHUNK_SIZE);
     #endif
   #else
                     memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset);

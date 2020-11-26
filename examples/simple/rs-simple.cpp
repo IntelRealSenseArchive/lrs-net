@@ -5,12 +5,37 @@
 #include <librealsense2-net/rs_net.hpp>
 #include "example.hpp"              // Include short list of convenience functions for rendering
 
+#include "tclap/CmdLine.h"
+#include "tclap/ValueArg.h"
+
 #include <map>
 #include <vector>
 
 int main(int argc, char * argv[]) try
 {
     std::cout << std::endl << "Simple Camera Example" << std::endl;
+
+    TCLAP::CmdLine cmd("LRS Network Extentions Simple Camera Example", ' ', RS2_API_VERSION_STR);
+
+    TCLAP::ValueArg<std::string> arg_address("s", "interface-address", "Address of the interface to bind on", false, "", "string");
+    TCLAP::ValueArg<unsigned int> arg_port("p", "port", "RTSP port to listen on", false, 8554, "integer");
+
+    cmd.add(arg_address);
+    cmd.add(arg_port);
+
+    cmd.parse(argc, argv);
+
+    std::string serverAddress("127.0.0.1");
+    if (arg_address.isSet()) {
+        serverAddress = arg_address.getValue().c_str();
+    }
+
+    serverAddress += ":";
+    if (arg_port.isSet()) {
+        serverAddress += std::to_string(arg_port.getValue());
+    } else {
+        serverAddress += "8554";
+    }
 
     // Create a simple OpenGL window for rendering:
     window app(640, 480, "Simple Camera Example");
@@ -21,7 +46,7 @@ int main(int argc, char * argv[]) try
     rs2::config      cfg;
     rs2::yuy_decoder yuv;
 
-    rs2::net_device dev("192.168.1.100:8554");
+    rs2::net_device dev(serverAddress);
     dev.add_to(ctx);
     std::cout << std::endl << "Network device added to the context" << std::endl;
 

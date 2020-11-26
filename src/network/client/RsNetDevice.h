@@ -61,7 +61,7 @@ public:
 // #define COMPRESSION_ENABLED
 // #define COMPRESSION_ZSTD
 
-#define CHUNK_SIZE (2048)
+#define CHUNK_SIZE (1024*8)
 typedef struct chunk_header{
     uint32_t size;
     uint32_t offset;
