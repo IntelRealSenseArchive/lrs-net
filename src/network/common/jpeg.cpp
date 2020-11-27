@@ -11,7 +11,7 @@ int jpeg::compress(uint8_t* in, int width, int height, uint8_t* out)
     struct jpeg_error_mgr m_jerr = {0};
 
     uint8_t* out_data = out;
-    uint64_t out_size = FRAME_SIZE;
+    long unsigned int out_size = FRAME_SIZE;
 
     m_cinfo.err = jpeg_std_error(&m_jerr);
     jpeg_create_compress(&m_cinfo);
