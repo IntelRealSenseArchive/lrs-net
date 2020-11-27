@@ -70,13 +70,13 @@ protected:
     RsMediaSubsession(RsMediaSession& parent) : MediaSubsession(parent) {};
     virtual ~RsMediaSubsession() {};
 
-    virtual Boolean createSourceObjects(int useSpecialRTPoffset) {    
-        if (strcmp(fCodecName, "LZ4") == 0) {
-            fReadSource = fRTPSource = LZ4VideoRTPSource::createNew(env(), fRTPSocket, fRTPPayloadFormat, fRTPTimestampFrequency, "video/LZ4");
-            return True;
-        }
-        return MediaSubsession::createSourceObjects(useSpecialRTPoffset);
-    };
+    // virtual Boolean createSourceObjects(int useSpecialRTPoffset) {    
+    //     if (strcmp(fCodecName, "LZ4") == 0) {
+    //         fReadSource = fRTPSource = LZ4VideoRTPSource::createNew(env(), fRTPSocket, fRTPPayloadFormat, fRTPTimestampFrequency, "video/LZ4");
+    //         return True;
+    //     }
+    //     return MediaSubsession::createSourceObjects(useSpecialRTPoffset);
+    // };
 
 };
 
@@ -550,7 +550,6 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
     // do not wait for the out of order packets
     // m_scs.subsession->rtpSource()->setPacketReorderingThresholdTime(0); 
 
-    // perhaps use your own custom "MediaSink" subclass instead
     if(m_scs.subsession->sink == NULL)
     {
         env << "Failed to create a data sink for the '" << m_scs.subsession->controlPath() << "' subsession: " << env.getResultMsg() << "\n";
@@ -560,11 +559,11 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
         env << "Created a data sink for the \"" << m_scs.subsession->controlPath() << "\" subsession\n";
         m_scs.subsession->miscPtr = this; // a hack to let subsession handler functions get the "RTSPClient" from the subsession
         m_scs.subsession->sink->startPlaying(*(m_scs.subsession->readSource()), subsessionAfterPlaying, m_scs.subsession);
-        // Also set a handler to be called if a RTCP "BYE" arrives for this subsession:
-        if(m_scs.subsession->rtcpInstance() != NULL)
-        {
-            m_scs.subsession->rtcpInstance()->setByeWithReasonHandler(subsessionByeHandler, m_scs.subsession);
-        }
+        // // Also set a handler to be called if a RTCP "BYE" arrives for this subsession:
+        // if(m_scs.subsession->rtcpInstance() != NULL)
+        // {
+        //     m_scs.subsession->rtcpInstance()->setByeWithReasonHandler(subsessionByeHandler, m_scs.subsession);
+        // }
 
         // We've finished setting up all of the subsessions.  Now, send a RTSP "PLAY" command to start the streaming:
         if(m_scs.session->absStartTime() != NULL)
@@ -683,7 +682,8 @@ void RSRTSPClient::subsessionByeHandler(void* clientData, char const* reason)
 
 // Implementation of "RSSink":
 // #define RS_SINK_RECEIVE_BUFFER_SIZE 1048576
-#define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_SIZE + CHUNK_HLEN)
+// #define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_SIZE + CHUNK_HLEN)
+#define RS_SINK_RECEIVE_BUFFER_SIZE (1450)
 
 RSSink* RSSink::createNew(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, uint32_t threshold)
 {

@@ -61,12 +61,12 @@ public:
 // #define COMPRESSION_ENABLED
 // #define COMPRESSION_ZSTD
 
-#define CHUNK_SIZE (1024*8)
 typedef struct chunk_header{
     uint32_t size;
     uint32_t offset;
 } chunk_header_t;
 #define CHUNK_HLEN (sizeof(chunk_header_t))
+#define CHUNK_SIZE (1434 - CHUNK_HLEN)
 
 class RSSink : public MediaSink
 {
@@ -122,6 +122,79 @@ protected:
             extraHeaders = strDup("");
             extraHeadersWereAllocated = True;
             return True;
+        }
+        else if(strcmp(request->commandName(), "SETUP") == 0)
+        {
+            MediaSubsession& subsession = *request->subsession();
+            Boolean streamUsingTCP = (request->booleanFlags() & 0x1) != 0;
+            Boolean streamOutgoing = (request->booleanFlags() & 0x2) != 0;
+            Boolean forceMulticastOnUnspecified = (request->booleanFlags() & 0x4) != 0;
+
+            char const *prefix, *separator, *suffix;
+            // constructSubsessionURL(subsession, prefix, separator, suffix);
+            prefix = subsession.parentSession().controlPath();
+            if(prefix == NULL)
+                prefix = "";
+
+            suffix = subsession.controlPath();
+            if(suffix == NULL)
+                suffix = "";
+
+            unsigned prefixLen = strlen(prefix);
+            separator = (prefixLen == 0 || prefix[prefixLen - 1] == '/' || suffix[0] == '/') ? "" : "/";
+
+            char const* transportFmt;
+            if(strcmp(subsession.protocolName(), "RTP") == 0)
+            {
+                transportFmt = "Transport: RTP/AVP%s%s%s=%d-%d\r\n";
+            }
+            else if(strcmp(subsession.protocolName(), "SRTP") == 0)
+            {
+                transportFmt = "Transport: RTP/SAVP%s%s%s=%d-%d\r\n";
+            }
+            else
+            { // "UDP"
+                transportFmt = "Transport: RAW/RAW/UDP%s%s%s=%d-%d\r\n";
+            }
+
+            cmdURL = new char[strlen(prefix) + strlen(separator) + strlen(suffix) + 1];
+            cmdURLWasAllocated = True;
+            sprintf(cmdURL, "%s%s%s", prefix, separator, suffix);
+
+            // Construct a "Transport:" header.
+            char const* transportTypeStr;
+            char const* modeStr = streamOutgoing ? ";mode=receive" : "";
+            // Note: I think the above is nonstandard, but DSS wants it this way
+            char const* portTypeStr;
+            portNumBits rtpNumber, rtcpNumber;
+            { // normal RTP streaming
+                unsigned connectionAddress = subsession.connectionEndpointAddress();
+                Boolean requestMulticastStreaming = IsMulticastAddress(connectionAddress) || (connectionAddress == 0 && forceMulticastOnUnspecified);
+                transportTypeStr = requestMulticastStreaming ? ";multicast" : ";unicast";
+                portTypeStr = requestMulticastStreaming ? ";port" : ";client_port";
+                rtpNumber = subsession.clientPortNum();
+                if(rtpNumber == 0)
+                {
+                    envir().setResultMsg("Client port number unknown\n");
+                    delete[] cmdURL;
+                    return False;
+                }
+                rtcpNumber = subsession.rtcpIsMuxed() ? rtpNumber : rtpNumber + 1;
+            }
+            unsigned transportSize = strlen(transportFmt) + strlen(transportTypeStr) + strlen(modeStr) + strlen(portTypeStr) + 2 * 5 /* max port len */;
+            char* transportStr = new char[transportSize];
+            sprintf(transportStr, transportFmt, transportTypeStr, modeStr, portTypeStr, rtpNumber, rtcpNumber);
+
+            // When sending more than one "SETUP" request, include a "Session:" header in the 2nd and later commands:
+            char* sessionStr = strDup("");
+
+            // The "Transport:", "Session:" (if present), "Blocksize:" (if present), and "KeyMgmt:" (if present)
+            // headers make up the 'extra headers':
+            extraHeaders = new char[transportSize + strlen(sessionStr) + 1];
+            extraHeadersWereAllocated = True;
+            sprintf(extraHeaders, "%s%s", transportStr, sessionStr);
+            delete[] transportStr;
+            delete[] sessionStr;
         }
 
         return RTSPClient::setRequestFields(request, cmdURL, cmdURLWasAllocated, protocolStr, extraHeaders, extraHeadersWereAllocated);

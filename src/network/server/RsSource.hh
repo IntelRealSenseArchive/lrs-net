@@ -22,7 +22,7 @@ public:
         return new RsDeviceSource(t_env, pqs);
     };
 
-    virtual char const* MIMEtype() const { return "video/LZ4"; };
+    virtual char const* MIMEtype() const { return "video/UDP"; };
 
 protected:
     RsDeviceSource(UsageEnvironment& t_env, frames_queue* pqs) : FramedSource(t_env), m_pqs(pqs) {};
