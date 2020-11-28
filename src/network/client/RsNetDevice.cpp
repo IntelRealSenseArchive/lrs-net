@@ -683,7 +683,7 @@ void RSRTSPClient::subsessionByeHandler(void* clientData, char const* reason)
 // Implementation of "RSSink":
 // #define RS_SINK_RECEIVE_BUFFER_SIZE 1048576
 // #define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_SIZE + CHUNK_HLEN)
-#define RS_SINK_RECEIVE_BUFFER_SIZE (1450)
+#define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_FULL + 16)
 
 RSSink* RSSink::createNew(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, uint32_t threshold)
 {

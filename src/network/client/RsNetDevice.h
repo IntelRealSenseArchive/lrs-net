@@ -66,7 +66,8 @@ typedef struct chunk_header{
     uint32_t offset;
 } chunk_header_t;
 #define CHUNK_HLEN (sizeof(chunk_header_t))
-#define CHUNK_SIZE (1434 - CHUNK_HLEN)
+#define CHUNK_SIZE (1450 - CHUNK_HLEN)
+#define CHUNK_FULL (CHUNK_SIZE + CHUNK_HLEN)
 
 class RSSink : public MediaSink
 {

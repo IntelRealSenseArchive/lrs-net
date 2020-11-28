@@ -53,7 +53,7 @@ public:
     uint32_t get_width()  { return m_stream.width();  };
     uint32_t get_height() { return m_stream.height(); };
 
-    uint32_t get_size()   { return 640*480*2; };
+    uint32_t get_size()   { return ((640*480*2) / CHUNK_SIZE + 1) * CHUNK_FULL; };
 
     FrameData get_frame(void* consumer)  { 
         if (m_queues.find(consumer) == m_queues.end()) {
@@ -80,7 +80,33 @@ public:
 
                 uint8_t* data = (uint8_t*)frame.get_data();
                 uint32_t size = frame.get_data_size();
+#if 0
+                // allocate the new new frame
+                int new_size = (size / CHUNK_SIZE + 1) * CHUNK_FULL;
 
+                uint32_t offset = 0;
+                uint32_t new_offset = 0;
+                uint32_t out_size = 0;
+
+                FrameData chunk(new uint8_t[new_size]);
+                while (offset < size) {
+                    chunk_header_t* ch = (chunk_header_t*)(chunk.get() + new_offset);
+                    ch->offset = offset;
+                    ch->size   = sizeof(chunk_header_t);
+                    memcpy((void*)(chunk.get() + new_offset + CHUNK_HLEN), (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset);
+                    ch->size  += CHUNK_SIZE;
+                    out_size  += ch->size;
+                    offset    += CHUNK_SIZE;
+                    new_offset+= CHUNK_FULL;
+                }
+
+                // push the chunk to queues
+                for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it) 
+                {
+                    std::lock_guard<std::mutex> lck (m_queues_mutex);
+                    (it->second)->push(chunk);
+                }
+#else
                 uint32_t offset = 0;
                 uint32_t out_size = 0;
 
@@ -110,6 +136,7 @@ public:
                         (it->second)->push(chunk);
                     }
                 }
+#endif
 
                 auto end = std::chrono::system_clock::now();
                 std::chrono::duration<double> elapsed = end - start;
@@ -124,7 +151,6 @@ public:
                     beginning = std::chrono::system_clock::now();
                     frame_count = 0;
                 }
-
 #else
                 uint8_t* data = (uint8_t*)frame.get_data();
                 uint32_t size = frame.get_data_size();
