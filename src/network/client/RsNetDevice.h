@@ -64,6 +64,7 @@ public:
 typedef struct chunk_header{
     uint32_t size;
     uint32_t offset;
+    uint32_t count;
 } chunk_header_t;
 #define CHUNK_HLEN (sizeof(chunk_header_t))
 #define CHUNK_SIZE (1450 - CHUNK_HLEN)

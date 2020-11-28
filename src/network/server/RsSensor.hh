@@ -72,6 +72,7 @@ public:
             m_sensor.set_option(RS2_OPTION_AUTO_EXPOSURE_PRIORITY, 0); // TODO: should be removed
 
             auto callback = [&](const rs2::frame& frame) {
+                static uint32_t frames_count = 0;
 #if 1                
                 static uint32_t frame_count = 0;    
                 static std::chrono::_V2::system_clock::time_point beginning = std::chrono::system_clock::now();
@@ -126,6 +127,7 @@ public:
                     memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset);
                     ch->size  += CHUNK_SIZE;
   #endif                    
+                    ch->count = ++frames_count;
                     out_size  += ch->size;
                     offset    += CHUNK_SIZE;
 
