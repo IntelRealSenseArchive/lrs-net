@@ -74,7 +74,7 @@ public:
             auto callback = [&](const rs2::frame& frame) {
 #if 1                
                 static uint32_t frame_count = 0;    
-                static std::chrono::_V2::system_clock::time_point beginning = std::chrono::system_clock::now();
+                static std::chrono::system_clock::time_point beginning = std::chrono::system_clock::now();
 
                 auto start = std::chrono::system_clock::now();
 
@@ -150,7 +150,7 @@ public:
         return frame;
     };
 
-    uint32_t stop(void* consumer) { 
+    void stop(void* consumer) { 
         m_queues.erase(consumer);
         if (m_queues.empty() && is_streaming()) {
             m_sensor.stop();

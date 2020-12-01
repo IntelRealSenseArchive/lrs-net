@@ -24,10 +24,10 @@ private:
     uint32_t m_size;
     uint32_t m_offset;
     uint32_t m_out_size;
-    std::chrono::_V2::system_clock::time_point start;
+    std::chrono::system_clock::time_point start;
 
     uint32_t m_frame_count;
-    std::chrono::_V2::system_clock::time_point m_beginning;
+    std::chrono::system_clock::time_point m_beginning;
 
     virtual void doGetNextFrame();
     static void afterGettingFrame(void* clientData, unsigned frameSize, unsigned numTruncatedBytes, struct timeval presentationTime, unsigned durationInMicroseconds);

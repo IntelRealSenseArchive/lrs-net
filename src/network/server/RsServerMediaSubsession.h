@@ -3,7 +3,6 @@
 
 #pragma once
 
-#include "RsDevice.hh"
 #include <liveMedia.hh>
 
 #ifndef _ON_DEMAND_SERVER_MEDIA_SUBSESSION_HH

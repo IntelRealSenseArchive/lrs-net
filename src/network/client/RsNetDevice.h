@@ -3,15 +3,15 @@
 
 #pragma once
 
+#include "liveMedia.hh"
+#include "BasicUsageEnvironment.hh"
+
 #include <option.h>
 #include <software-device.h>
 #include <librealsense2/hpp/rs_internal.hpp>
 #include <librealsense2/rs.hpp>
 
 #include <list>
-
-#include "liveMedia.hh"
-#include "BasicUsageEnvironment.hh"
 
 #define MAX_ACTIVE_STREAMS 4
 
@@ -58,10 +58,10 @@ public:
 //    RsRtsp* rtsp_client; // TODO: get smart ptr from rtsp client creator
 };
 
-// #define COMPRESSION_ENABLED
-// #define COMPRESSION_ZSTD
+#define COMPRESSION_ENABLED
+#define COMPRESSION_ZSTD
 
-#define CHUNK_SIZE (1024*8)
+#define CHUNK_SIZE (1024*2)
 typedef struct chunk_header{
     uint32_t size;
     uint32_t offset;
@@ -173,11 +173,11 @@ private:
     std::thread m_rtp;
     std::thread m_dev;
 
-    pthread_t m_th_rtp;
-    pthread_attr_t m_th_rtp_attr;
+    // pthread_t m_th_rtp;
+    // pthread_attr_t m_th_rtp_attr;
 
-    pthread_t m_th_dev;
-    pthread_attr_t m_th_dev_attr;
+    // pthread_t m_th_dev;
+    // pthread_attr_t m_th_dev_attr;
     
     RSRTSPClient* m_rtspClient;
     char m_eventLoopWatchVariable;

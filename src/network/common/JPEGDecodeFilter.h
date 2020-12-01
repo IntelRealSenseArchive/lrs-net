@@ -26,7 +26,7 @@ private:
     uint8_t* m_framebuf; // frame buffer for plain YUYV image from the camera
 
     uint32_t m_frame_count;
-    std::chrono::_V2::system_clock::time_point m_beginning;
+    std::chrono::system_clock::time_point m_beginning;
 
     virtual void doGetNextFrame() 
     { 

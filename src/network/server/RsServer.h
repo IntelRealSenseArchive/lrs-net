@@ -1,14 +1,14 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2020 Intel Corporation. All Rights Reserved.
 
-#include <string>
-
 #include <liveMedia.hh>
 #include <GroupsockHelper.hh>
 #include <BasicUsageEnvironment.hh>
 #include <RTSPCommon.hh>
 
 #include <librealsense2/rs.hpp>
+
+#include <string>
 
 class RsRTSPServer : public RTSPServer {
 public:
@@ -38,8 +38,8 @@ protected:
 public:
     class RsRTSPClientConnection: public RTSPServer::RTSPClientConnection {
     protected:
-        RsRTSPClientConnection(RsRTSPServer& ourServer, int clientSocket, struct sockaddr_in clientAddr)
-            : RTSPServer::RTSPClientConnection(ourServer, clientSocket, clientAddr), m_parent(ourServer) {};
+        RsRTSPClientConnection(RsRTSPServer& ourServer, int clientSocket, struct sockaddr_storage const& clientAddr)
+                    : RTSPServer::RTSPClientConnection(ourServer, clientSocket, clientAddr), m_parent(ourServer) {};
         virtual ~RsRTSPClientConnection() {};
 
         friend class RsRTSPServer;
@@ -112,7 +112,7 @@ public:
 protected: // redefined virtual functions
     friend class RsRTSPClientConnection;
 
-    virtual ClientConnection* createNewClientConnection(int clientSocket, struct sockaddr_in clientAddr) {
+    virtual ClientConnection* createNewClientConnection(int clientSocket, struct sockaddr_storage const& clientAddr) {
         return new RsRTSPClientConnection(*this, clientSocket, clientAddr);
     }
 

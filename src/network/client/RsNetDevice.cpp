@@ -1,6 +1,9 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2020 Intel Corporation. All Rights Reserved.
 
+#include "liveMedia.hh"
+#include "BasicUsageEnvironment.hh"
+
 #include "RsNetDevice.h"
 
 #include <api.h>
@@ -13,9 +16,6 @@
 #include <string>
 #include <thread>
 #include <functional>
-
-#include "liveMedia.hh"
-#include "BasicUsageEnvironment.hh"
 
 #include "JPEG2000DecodeFilter.h"
 #include "JPEGDecodeFilter.h"
@@ -143,7 +143,7 @@ StreamClientState::~StreamClientState()
 }
 
 void* rs_net_device::doRTP() {
-    std::cout << "RTP support thread started: " << pthread_self() << std::endl;
+    std::cout << "RTP support thread started: " /* << pthread_self() */ << std::endl;
 
     std::string rtspURL;
     rtspURL.append("rtsp://").append(m_ip_address).append(":").append(std::to_string(m_ip_port)).append("/RGB Camera");

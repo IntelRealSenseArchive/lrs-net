@@ -34,7 +34,7 @@ private:
     FramedSource* fInputSource;
 
     uint32_t m_frame_count;
-    std::chrono::_V2::system_clock::time_point m_beginning;
+    std::chrono::system_clock::time_point m_beginning;
 
     uint8_t* m_framebuf_in;
     uint8_t* m_framebuf_out;

@@ -10,7 +10,7 @@ find_package(Threads REQUIRED)
 # Save the command line compile commands in the build output
 set(CMAKE_EXPORT_COMPILE_COMMANDS 1)
 
-add_definitions(-DNEWLOCALE_NOT_USED=1 -DBSD=1 -DSOCKLEN_T=socklen_t -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE=1 -DALLOW_RTSP_SERVER_PORT_REUSE=1 -DNO_OPENSSL=1 -DRESPONSE_BUFFER_SIZE=100000)
+add_definitions(-D_WINSOCKAPI_ -DNEWLOCALE_NOT_USED=1 -DBSD=1 -DSOCKLEN_T=socklen_t -D_FILE_OFFSET_BITS=64 -D_LARGEFILE_SOURCE=1 -DALLOW_RTSP_SERVER_PORT_REUSE=1 -DNO_OPENSSL=1 -DRESPONSE_BUFFER_SIZE=100000)
 
 #target_compile_definitions(${PROJECT_NAME} PUBLIC RESPONSE_BUFFER_SIZE=100000)
 
@@ -38,9 +38,9 @@ set(RS_CLIENT_NET_CPP
 )
 
 set(RS_COMMON_NET_CPP
-    ./common/RsCommon.h
-    ./common/RsUsageEnvironment.cpp
-    ./common/RsUsageEnvironment.h
+    # ./common/RsCommon.h
+    # ./common/RsUsageEnvironment.cpp
+    # ./common/RsUsageEnvironment.h
 
     # ./common/jpeg2k.h
     # ./common/jpeg2k.cpp
@@ -53,15 +53,15 @@ set(RS_COMMON_NET_CPP
 )
 
 set(RS_COMP_NET_CPP
-    ./compression/CompressionFactory.cpp
-    ./compression/CompressionFactory.h
-    ./compression/ICompression.h
-    ./compression/JpegCompression.cpp
-    ./compression/JpegCompression.h
-    ./compression/Lz4Compression.cpp
-    ./compression/Lz4Compression.h
-    ./compression/RvlCompression.cpp
-    ./compression/RvlCompression.h
+    # ./compression/CompressionFactory.cpp
+    # ./compression/CompressionFactory.h
+    # ./compression/ICompression.h
+    # ./compression/JpegCompression.cpp
+    # ./compression/JpegCompression.h
+    # ./compression/Lz4Compression.cpp
+    # ./compression/Lz4Compression.h
+    # ./compression/RvlCompression.cpp
+    # ./compression/RvlCompression.h
     ${LZ4_DIR}/lz4.h 
     ${LZ4_DIR}/lz4.c
 )
@@ -112,10 +112,10 @@ file(GLOB LIVE555_CPP
 )
 list(REMOVE_ITEM LIVE555_CPP "${LIVE}/liveMedia/ADTSAudioStreamDiscreteFramer.cpp")
 
-if (${BUILD_SHARED_LIBS} AND ${BUILD_EASYLOGGINGPP})
-    list(APPEND REALSENSE_NET_CPP ${CMAKE_SOURCE_DIR}/third-party/easyloggingpp/src/easylogging++.cc)
-endif()
-add_definitions(-DELPP_NO_DEFAULT_LOG_FILE)
+# if (${BUILD_SHARED_LIBS} AND ${BUILD_EASYLOGGINGPP})
+#     list(APPEND REALSENSE_NET_CPP ${CMAKE_SOURCE_DIR}/third-party/easyloggingpp/src/easylogging++.cc)
+# endif()
+# add_definitions(-DELPP_NO_DEFAULT_LOG_FILE)
 
 add_library(${PROJECT_NAME} ${REALSENSE_NET_CPP} ${LIVE555_CPP} ./realsense-net.def)
 
@@ -143,7 +143,7 @@ include_directories(${PROJECT_NAME}
 
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/common
-    ${CMAKE_SOURCE_DIR}/third-party/easyloggingpp/src
+    # ${CMAKE_SOURCE_DIR}/third-party/easyloggingpp/src
     ${CMAKE_SOURCE_DIR}/third-party/tclap/include
 
     ${CMAKE_BINARY_DIR}/libjpeg-turbo/include
@@ -179,10 +179,11 @@ if(WIN32)
             add_definitions(-Dssize_t=long)
     endif("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
 
-    add_definitions(-DELPP_WINSOCK2)
+    # add_definitions(-DELPP_WINSOCK2)
         
     set(WINLIB Ws2_32.lib)
-    set(JPGLIB "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/turbojpeg-static.lib")
+    set(JPGLIB  "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/turbojpeg-static.lib")
+    set(ZSTDLIB "${CMAKE_BINARY_DIR}/zstd/lib/zstd_static.lib")
 else(WIN32)
     set(JPGLIB      "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/libturbojpeg.a")
     # set(OPENJPEGLIB "${CMAKE_BINARY_DIR}/openjpeg/lib/libopenjp2.a")
