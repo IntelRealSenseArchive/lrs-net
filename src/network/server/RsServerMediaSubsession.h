@@ -30,6 +30,13 @@ protected:
     RsServerMediaSubsession(UsageEnvironment& t_env, frames_queue* psq) : OnDemandServerMediaSubsession(t_env, false), m_queue(psq) {};
     virtual ~RsServerMediaSubsession() {};
 
+    virtual char const* sdpLines() {
+        // regenerate SDP description to get actual subsession state
+        if(fSDPLines != NULL) delete [] fSDPLines;
+        fSDPLines = NULL;
+        return OnDemandServerMediaSubsession::sdpLines();
+    };
+
     virtual char const* getAuxSDPLine(RTPSink* rtpSink, FramedSource* inputSource) {
         static char* privateAuxSDPLine = {0};
         if (privateAuxSDPLine == NULL) privateAuxSDPLine = new char[512]; // more than enough? :)
@@ -37,7 +44,7 @@ protected:
         const char* auxSDPLine = OnDemandServerMediaSubsession::getAuxSDPLine(rtpSink, inputSource);
         if (auxSDPLine == NULL) auxSDPLine = "";
 
-        sprintf(privateAuxSDPLine, "%sa=x-dimensions:%d,%d\r\na=x-framerate: %d\r\n", auxSDPLine, m_queue->get_width(), m_queue->get_height(), m_queue->get_fps());
+        sprintf(privateAuxSDPLine, "%sactive=%s\r\na=x-dimensions:%d,%d\r\na=x-framerate: %d\r\n", auxSDPLine, m_queue->is_streaming() ? "yes" : "no", m_queue->get_width(), m_queue->get_height(), m_queue->get_fps());
         return privateAuxSDPLine;
     };
 

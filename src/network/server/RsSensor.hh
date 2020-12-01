@@ -44,7 +44,19 @@ public:
             stop(it->first);
     }; // TODO: improve
 
-    bool is_streaming() { return m_sensor.get_active_streams().size() > 0; };
+    bool is_streaming() { 
+        auto streams = m_sensor.get_active_streams();
+        for (auto it = streams.begin(); it != streams.end(); ++it) {
+            rs2::video_stream_profile vsp = (*it).as<rs2::video_stream_profile>();
+            if (vsp.fps() == get_fps() && 
+                vsp.width() == get_width() &&
+                vsp.height() == get_height() &&
+                vsp.stream_type() == get_type() &&
+                vsp.stream_index() == get_index()) return true;
+        }
+
+        return false;
+    };
     
     uint32_t get_type()   { return m_stream.stream_type();   };
     uint32_t get_index()  { return m_stream.stream_index();  };
