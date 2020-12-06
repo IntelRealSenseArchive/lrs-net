@@ -121,26 +121,26 @@ RSRTSPClient::~RSRTSPClient() {}
 
 // Implementation of "StreamClientState":
 
-StreamClientState::StreamClientState()
-    : iter(NULL)
-    , session(NULL)
-    , subsession(NULL)
-    , streamTimerTask(NULL)
-    , duration(0.0)
-{}
+// StreamClientState::StreamClientState()
+//     : iter(NULL)
+//     , session(NULL)
+//     , subsession(NULL)
+//     , streamTimerTask(NULL)
+//     , duration(0.0)
+// {}
 
-StreamClientState::~StreamClientState()
-{
-    delete iter;
-    if(session != NULL)
-    {
-        // We also need to delete "session", and unschedule "streamTimerTask" (if set)
-        UsageEnvironment& env = session->envir(); // alias
+// StreamClientState::~StreamClientState()
+// {
+//     delete iter;
+//     if(session != NULL)
+//     {
+//         // We also need to delete "session", and unschedule "streamTimerTask" (if set)
+//         UsageEnvironment& env = session->envir(); // alias
 
-        env.taskScheduler().unscheduleDelayedTask(streamTimerTask);
-        Medium::close(session);
-    }
-}
+//         env.taskScheduler().unscheduleDelayedTask(streamTimerTask);
+//         Medium::close(session);
+//     }
+// }
 
 void* rs_net_device::doRTP() {
     std::cout << "RTP support thread started" << std::endl;
@@ -222,8 +222,8 @@ void rs_net_device::doDevice() try {
 
             if (netsensor->current_state)  {
                 if (m_rtspClient)  {
-                    if (m_rtspClient->m_scs.subsession) {
-                        RSSink* sink = (RSSink*)m_rtspClient->m_scs.subsession->sink;
+                    if (m_rtspClient->m_netsensor->subsession) {
+                        RSSink* sink = (RSSink*)m_rtspClient->m_netsensor->subsession->sink;
                         if (sink) { // the session might be not created yet
                             auto start = std::chrono::system_clock::now();
 
@@ -293,7 +293,7 @@ void rs_net_device::doDevice() try {
                                     { 
                                         (void*)frame_raw, 
                                         [] (void* f) { delete [] (uint8_t*)f; }, 
-                                        m_rtspClient->m_scs.subsession->videoWidth() * 1,   // IR:1 COLOR and DEPTH:2
+                                        m_rtspClient->m_netsensor->subsession->videoWidth() * 1,   // IR:1 COLOR and DEPTH:2
                                         1,                                                  // IR:1 COLOR and DEPTH:2
                                         (double)time(NULL), 
                                         RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
@@ -382,7 +382,10 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
     // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 2, 29, 640, 480, 30, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
     // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 2, 39, 640, 480, 60, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
 
-    m_frame_raw = new uint8_t[640*480*2];
+    // m_frame_raw = new uint8_t[640*480*2];
+    m_frame_raw = (uint8_t*)malloc(640*480*2);
+    if (m_frame_raw == NULL) throw std::runtime_error("Cannot allocate memory");
+    else std::cout << "Buffer allocated: " << (void*)m_frame_raw << std::endl;
     m_dev = std::thread( [this](){ doDevice(); } ); 
 }
 
@@ -393,7 +396,8 @@ rs_net_device::~rs_net_device()
     if (m_dev.joinable()) m_dev.join();
 
     if (m_frame_raw) {
-        delete [] m_frame_raw;
+        free(m_frame_raw);
+        // delete [] m_frame_raw;
         m_frame_raw = NULL;
     }
 }
@@ -403,10 +407,10 @@ void RSRTSPClient::shutdownStream()
     UsageEnvironment& env = envir(); // alias
 
     // First, check whether any subsessions have still to be closed:
-    if(m_scs.session != NULL)
+    if(m_netsensor->session != NULL)
     {
         Boolean someSubsessionsWereActive = False;
-        MediaSubsessionIterator iter(*m_scs.session);
+        MediaSubsessionIterator iter(*m_netsensor->session);
         MediaSubsession* subsession;
 
         while((subsession = iter.next()) != NULL)
@@ -429,7 +433,7 @@ void RSRTSPClient::shutdownStream()
         {
             // Send a RTSP "TEARDOWN" command, to tell the server to shutdown the stream.
             // Don't bother handling the response to the "TEARDOWN".
-            sendTeardownCommand(*m_scs.session, NULL);
+            sendTeardownCommand(*m_netsensor->session, NULL);
         }
     }
 
@@ -471,56 +475,57 @@ void RSRTSPClient::continueAfterDESCRIBE(int resultCode, char* resultString)
         UsageEnvironment& env = envir(); // alias
 
         if(resultCode != 0) {
-            envir() << "Failed to get a SDP description: " << resultString << "\n";
+            std::cout << "Failed to get a SDP description: " << resultString << "\n";
             delete[] resultString;
             throw std::runtime_error("Failed to get a SDP description");
             break;
         }
 
         char* const sdpDescription = resultString;
-        envir() << "Got a SDP description:\n" << sdpDescription << "\n";
+        std::cout << "Got a SDP description:\n" << sdpDescription << "\n";
 
         // Create a media session object from this SDP description:
-        // m_scs.session = MediaSession::createNew(env, sdpDescription);
-        m_scs.session = RsMediaSession::createNew(env, sdpDescription);
+        RsMediaSession* session = RsMediaSession::createNew(env, sdpDescription);
+        // m_netsensor->session = RsMediaSession::createNew(env, sdpDescription);
         delete[] sdpDescription; // because we don't need it anymore
 
-        if (m_scs.session == NULL) {
-            envir() << "Failed to create a MediaSession object from the SDP description: " << env.getResultMsg() << "\n";
+        if (session == NULL) {
+            std::cout << "Failed to create a MediaSession object from the SDP description: " << env.getResultMsg() << "\n";
             throw std::runtime_error("Malformed server response");
             break;
-        } else if (!m_scs.session->hasSubsessions()) {
-            envir() << "This session has no media subsessions (i.e., no \"m=\" lines)\n";
+        } else if (!session->hasSubsessions()) {
+            std::cout << "This session has no media subsessions (i.e., no \"m=\" lines)\n";
             throw std::runtime_error("No profiles found");
             break;
         } else {
-            envir() << "Session created " << m_scs.session->name() << "/" << m_scs.session->sessionDescription() << "/" << m_scs.session->controlPath() << "\n";
-            ready = true;
+            std::cout << "Session created " << session->name() << "/" << session->sessionDescription() << "/" << session->controlPath() << "\n";
 
             // Create the profiles
-            m_scs.iter = new MediaSubsessionIterator(*m_scs.session);
-            while (m_scs.subsession = m_scs.iter->next()) {
+            MediaSubsessionIterator it(*session);
+            while (MediaSubsession* subsession = it.next()) {
                 uint32_t uid = 0;
-                std::string sensorName = m_scs.subsession->attrVal_str("sensor");
+                std::string sensorName = subsession->attrVal_str("sensor");
                 rs2_video_stream stream = {
-                    (rs2_stream)m_scs.subsession->attrVal_unsigned("type"),
-                    m_scs.subsession->attrVal_unsigned("index"),
+                    (rs2_stream)subsession->attrVal_unsigned("type"),
+                    subsession->attrVal_unsigned("index"),
                     uid++,
-                    m_scs.subsession->videoWidth(),
-                    m_scs.subsession->videoHeight(),
-                    m_scs.subsession->videoFPS(),
-                    m_scs.subsession->attrVal_unsigned("bpp"),
-                    (rs2_format)m_scs.subsession->attrVal_unsigned("format"),
+                    subsession->videoWidth(),
+                    subsession->videoHeight(),
+                    subsession->videoFPS(),
+                    subsession->attrVal_unsigned("bpp"),
+                    (rs2_format)subsession->attrVal_unsigned("format"),
                     m_parent.intrinsics
                 };
 
                 // add the profile to the SW device
-                m_parent.add_stream(sensorName, stream);
-
+                m_netsensor = m_parent.add_stream(sensorName, stream);
+                m_netsensor->session = session;
                 // RSSink* sink = RSSink::createNew(env, *m_scs.subsession, url(), m_scs.subsession->videoWidth() * m_scs.subsession->videoHeight() * m_scs.subsession->videoFPS());
                 // m_scs.subsession->sink = sink;
                 // sink->profile = m_parent.add_stream(sensorName, stream);
             }
+
+            ready = true;
         }
         return;
     } while (0);
@@ -535,41 +540,41 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
     // Then, create and set up our data source objects for the session.  We do this by iterating over the session's 'subsessions',
     // calling "MediaSubsession::initiate()", and then sending a RTSP "SETUP" command, on each one.
     // (Each 'subsession' will have its own data source.)
-    m_scs.iter = new MediaSubsessionIterator(*m_scs.session);
+    MediaSubsessionIterator it(*m_netsensor->session);
 
     uint32_t stype = stream.stream_type();
     std::cout << "Looking  for " << stream.width() << "x" << stream.height() << "x" << stream.fps() << ", type " << stype << ", index " << stream.stream_index() << std::endl;
-    while (m_scs.subsession = m_scs.iter->next()) {
-        uint32_t videoType  = m_scs.subsession->attrVal_unsigned("type");
-        uint32_t videoIndex = m_scs.subsession->attrVal_unsigned("index");
-    std::cout << "Checking for " << m_scs.subsession->videoWidth() << "x" << m_scs.subsession->videoHeight() << "x" << m_scs.subsession->videoFPS() << ", type " << videoType << ", index " << videoIndex << std::endl;
-        if ((m_scs.subsession->videoWidth()  == stream.width())  &&
-            (m_scs.subsession->videoHeight() == stream.height()) &&
-            (m_scs.subsession->videoFPS()    == stream.fps())    &&
+    while (m_netsensor->subsession = it.next()) {
+        uint32_t videoType  = m_netsensor->subsession->attrVal_unsigned("type");
+        uint32_t videoIndex = m_netsensor->subsession->attrVal_unsigned("index");
+    std::cout << "Checking for " << m_netsensor->subsession->videoWidth() << "x" << m_netsensor->subsession->videoHeight() << "x" << m_netsensor->subsession->videoFPS() << ", type " << videoType << ", index " << videoIndex << std::endl;
+        if ((m_netsensor->subsession->videoWidth()  == stream.width())  &&
+            (m_netsensor->subsession->videoHeight() == stream.height()) &&
+            (m_netsensor->subsession->videoFPS()    == stream.fps())    &&
             (videoType == stream.stream_type()) && 
             (videoIndex == stream.stream_index()))
         {
-            envir() << "Profile match for " << m_scs.subsession->controlPath() << "\n";
+            std::cout << "Profile match for " << m_netsensor->subsession->controlPath() << std::endl;
             profile_found = true;
 
             int useSpecialRTPoffset = -1; // for supported codecs
-            if (strcmp(m_scs.subsession->codecName(), "LZ4") == 0) {
+            if (strcmp(m_netsensor->subsession->codecName(), "LZ4") == 0) {
                 useSpecialRTPoffset = 0;
             }
 
-            if (!m_scs.subsession->initiate(useSpecialRTPoffset)) {
-                std::cout << "Failed to initiate the \"" << m_scs.subsession->controlPath() << "\" subsession: " << envir().getResultMsg() << "\n";
+            if (!m_netsensor->subsession->initiate(useSpecialRTPoffset)) {
+                std::cout << "Failed to initiate the \"" << m_netsensor->subsession->controlPath() << "\" subsession: " << envir().getResultMsg() << "\n";
             } else {
-                std::cout << "Initiated the '" << std::setw(10) << m_scs.subsession->controlPath() << "' " 
-                                               << m_scs.subsession->mediumName()   << "/" 
-                                               << m_scs.subsession->protocolName() << "/" 
-                                               << m_scs.subsession->videoWidth() << "x" << m_scs.subsession->videoHeight() << "x" << m_scs.subsession->videoFPS() << " subsession (";
-                if (m_scs.subsession->rtcpIsMuxed()) {
-                    std::cout << "client port " << m_scs.subsession->clientPortNum();
+                std::cout << "Initiated the '" << std::setw(10) << m_netsensor->subsession->controlPath() << "' " 
+                                               << m_netsensor->subsession->mediumName()   << "/" 
+                                               << m_netsensor->subsession->protocolName() << "/" 
+                                               << m_netsensor->subsession->videoWidth() << "x" << m_netsensor->subsession->videoHeight() << "x" << m_netsensor->subsession->videoFPS() << " subsession (";
+                if (m_netsensor->subsession->rtcpIsMuxed()) {
+                    std::cout << "client port " << m_netsensor->subsession->clientPortNum();
                 } else {
-                    std::cout << "client ports " << m_scs.subsession->clientPortNum() << "-" << m_scs.subsession->clientPortNum() + 1;
+                    std::cout << "client ports " << m_netsensor->subsession->clientPortNum() << "-" << m_netsensor->subsession->clientPortNum() + 1;
                 }
-                std::cout << ") [" << m_scs.subsession->readSource()->name() << " : " << m_scs.subsession->readSource()->MIMEtype() << "]\n";
+                std::cout << ") [" << m_netsensor->subsession->readSource()->name() << " : " << m_netsensor->subsession->readSource()->MIMEtype() << "]\n";
 
 #if 0
 #  define ENCODER_LZ4
@@ -590,7 +595,7 @@ void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
 #endif
 
                 // Continue setting up this subsession, by sending a RTSP "SETUP" command:
-                sendSetupCommand(*m_scs.subsession, RSRTSPClient::continueAfterSETUP);
+                sendSetupCommand(*m_netsensor->subsession, RSRTSPClient::continueAfterSETUP);
                 break;
             }
         }
@@ -613,53 +618,53 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
     // Having successfully setup the subsession, create a data sink for it, and call "startPlaying()" on it.
     // (This will prepare the data sink to receive data; the actual flow of data from the client won't start happening until later,
     // after we've sent a RTSP "PLAY" command.)
-    RSSink* sink = RSSink::createNew(env, *m_scs.subsession, url(), m_scs.subsession->videoWidth() * m_scs.subsession->videoHeight() * m_scs.subsession->videoFPS());
+    RSSink* sink = RSSink::createNew(env, *m_netsensor->subsession, url(), m_netsensor->subsession->videoWidth() * m_netsensor->subsession->videoHeight() * m_netsensor->subsession->videoFPS());
 
     rs2_video_stream stream = {
-        (rs2_stream)m_scs.subsession->attrVal_unsigned("type"),
-        m_scs.subsession->attrVal_unsigned("index"),
+        (rs2_stream)m_netsensor->subsession->attrVal_unsigned("type"),
+        m_netsensor->subsession->attrVal_unsigned("index"),
         0,
-        m_scs.subsession->videoWidth(),
-        m_scs.subsession->videoHeight(),
-        m_scs.subsession->videoFPS(),
-        m_scs.subsession->attrVal_unsigned("bpp"),
-        (rs2_format)m_scs.subsession->attrVal_unsigned("format"),
+        m_netsensor->subsession->videoWidth(),
+        m_netsensor->subsession->videoHeight(),
+        m_netsensor->subsession->videoFPS(),
+        m_netsensor->subsession->attrVal_unsigned("bpp"),
+        (rs2_format)m_netsensor->subsession->attrVal_unsigned("format"),
         m_parent.intrinsics
     };
 
     sink->profile = m_parent.get_profile(stream);
 
-    m_scs.subsession->sink = sink;
+    m_netsensor->subsession->sink = sink;
 
     // do not wait for the out of order packets
     // m_scs.subsession->rtpSource()->setPacketReorderingThresholdTime(0); 
 
     // perhaps use your own custom "MediaSink" subclass instead
-    if(m_scs.subsession->sink == NULL)
+    if(m_netsensor->subsession->sink == NULL)
     {
-        env << "Failed to create a data sink for the '" << m_scs.subsession->controlPath() << "' subsession: " << env.getResultMsg() << "\n";
+        env << "Failed to create a data sink for the '" << m_netsensor->subsession->controlPath() << "' subsession: " << env.getResultMsg() << "\n";
     }
     else
     {
-        env << "Created a data sink for the \"" << m_scs.subsession->controlPath() << "\" subsession\n";
-        m_scs.subsession->miscPtr = this; // a hack to let subsession handler functions get the "RTSPClient" from the subsession
-        m_scs.subsession->sink->startPlaying(*(m_scs.subsession->readSource()), subsessionAfterPlaying, m_scs.subsession);
+        env << "Created a data sink for the \"" << m_netsensor->subsession->controlPath() << "\" subsession\n";
+        m_netsensor->subsession->miscPtr = this; // a hack to let subsession handler functions get the "RTSPClient" from the subsession
+        m_netsensor->subsession->sink->startPlaying(*(m_netsensor->subsession->readSource()), subsessionAfterPlaying, m_netsensor->subsession);
         // Also set a handler to be called if a RTCP "BYE" arrives for this subsession:
-        if(m_scs.subsession->rtcpInstance() != NULL)
+        if(m_netsensor->subsession->rtcpInstance() != NULL)
         {
-            m_scs.subsession->rtcpInstance()->setByeWithReasonHandler(subsessionByeHandler, m_scs.subsession);
+            m_netsensor->subsession->rtcpInstance()->setByeWithReasonHandler(subsessionByeHandler, m_netsensor->subsession);
         }
 
         // We've finished setting up all of the subsessions.  Now, send a RTSP "PLAY" command to start the streaming:
-        if(m_scs.session->absStartTime() != NULL)
+        if(m_netsensor->session->absStartTime() != NULL)
         {
             // Special case: The stream is indexed by 'absolute' time, so send an appropriate "PLAY" command:
-            sendPlayCommand(*m_scs.session, continueAfterPLAY, m_scs.session->absStartTime(), m_scs.session->absEndTime());
+            sendPlayCommand(*m_netsensor->session, continueAfterPLAY, m_netsensor->session->absStartTime(), m_netsensor->session->absEndTime());
         }
         else
         {
-            m_scs.duration = m_scs.session->playEndTime() - m_scs.session->playStartTime();
-            sendPlayCommand(*m_scs.session, continueAfterPLAY);
+            m_netsensor->duration = m_netsensor->session->playEndTime() - m_netsensor->session->playStartTime();
+            sendPlayCommand(*m_netsensor->session, continueAfterPLAY);
         }
 
     }
@@ -690,18 +695,18 @@ void RSRTSPClient::continueAfterPLAY(int resultCode, char* resultString)
         // using a RTCP "BYE").  This is optional.  If, instead, you want to keep the stream active - e.g., so you can later
         // 'seek' back within it and do another RTSP "PLAY" - then you can omit this code.
         // (Alternatively, if you don't want to receive the entire stream, you could set this timer for some shorter value.)
-        if(m_scs.duration > 0)
+        if(m_netsensor->duration > 0)
         {
             unsigned const delaySlop = 2; // number of seconds extra to delay, after the stream's expected duration.  (This is optional.)
-            m_scs.duration += delaySlop;
-            unsigned uSecsToDelay = (unsigned)(m_scs.duration * 1000000);
-            m_scs.streamTimerTask = env.taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc*)RSRTSPClient::streamTimerHandler, this);
+            m_netsensor->duration += delaySlop;
+            unsigned uSecsToDelay = (unsigned)(m_netsensor->duration * 1000000);
+            m_netsensor->streamTimerTask = env.taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc*)RSRTSPClient::streamTimerHandler, this);
         }
 
         env << "Started playing session";
-        if(m_scs.duration > 0)
+        if(m_netsensor->duration > 0)
         {
-            env << " (for up to " << m_scs.duration << " seconds)";
+            env << " (for up to " << m_netsensor->duration << " seconds)";
         }
         env << "...\n";
 
@@ -720,7 +725,7 @@ void RSRTSPClient::streamTimerHandler(void* clientData)
 {
     RSRTSPClient* rtspClient = (RSRTSPClient*)clientData;
 
-    rtspClient->m_scs.streamTimerTask = NULL;
+    rtspClient->m_netsensor->streamTimerTask = NULL;
     rtspClient->shutdownStream();
 }
 

@@ -32,18 +32,18 @@
 class rs_net_device; // forward
 
 // Define a class to hold per-stream state that we maintain throughout each stream's lifetime:
-class StreamClientState {
-public:
-  StreamClientState();
-  virtual ~StreamClientState();
+// class StreamClientState {
+// public:
+//   StreamClientState();
+//   virtual ~StreamClientState();
 
-public:
-  MediaSubsessionIterator* iter;
-  MediaSession* session;
-  MediaSubsession* subsession;
-  TaskToken streamTimerTask;
-  double duration;
-};
+// public:
+//   MediaSubsessionIterator* iter;
+//   MediaSession* session;
+//   MediaSubsession* subsession;
+//   TaskToken streamTimerTask;
+//   double duration;
+// };
 
 // class ip_sensor
 // {
@@ -76,8 +76,11 @@ typedef struct rs_net_sensor {
     bool current_state;
     bool prev_state;
 
-    MediaSubsessionIterator* iter;
     MediaSession* session;
+    MediaSubsession* subsession;
+
+    TaskToken streamTimerTask;
+    double duration;
 } rs_net_sensor;
 
 using NetSensor      = std::shared_ptr<rs_net_sensor>;
@@ -159,7 +162,8 @@ protected:
     };
 
 public:
-    StreamClientState m_scs;
+    NetSensor m_netsensor;
+    // StreamClientState m_scs;
 
     void startRTPSession(rs2::video_stream_profile stream);
 
@@ -196,7 +200,7 @@ public:
 
     // ip_sensor* remote_sensors[NUM_OF_SENSORS];
 
-    StreamProfile add_stream(std::string sensor_name, rs2_video_stream stream) {
+    NetSensor add_stream(std::string sensor_name, rs2_video_stream stream) {
         if (sensors.find(sensor_name) == sensors.end()) {
             NetSensor netsensor(new rs_net_sensor);
             netsensor->sw_sensor = std::make_shared<rs2::software_sensor>(m_device.add_sensor(sensor_name));
@@ -211,7 +215,8 @@ public:
         StreamProfile sp = std::make_shared<rs2::stream_profile>(netsensor->sw_sensor->add_video_stream(stream, true));
         netsensor->stream_profiles->emplace_back(sp);
 
-        return sp;
+        // return sp;
+        return netsensor;
     };
 
     StreamProfile get_profile(rs2_video_stream stream) {
