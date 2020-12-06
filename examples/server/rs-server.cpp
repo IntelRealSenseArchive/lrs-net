@@ -64,10 +64,12 @@ int main(int argc, char** argv)
     TCLAP::SwitchArg arg_enable_compression("c", "enable-compression", "Enable video compression");
     TCLAP::ValueArg<std::string> arg_address("i", "interface-address", "Address of the interface to bind on", false, "", "string");
     TCLAP::ValueArg<unsigned int> arg_port("p", "port", "RTSP port to listen on", false, 8554, "integer");
+    TCLAP::ValueArg<std::string> arg_serial("s", "serial-number", "Serial number of the camera", false, "", "string");
 
     cmd.add(arg_enable_compression);
     cmd.add(arg_address);
     cmd.add(arg_port);
+    cmd.add(arg_serial);
 
     cmd.parse(argc, argv);
 
@@ -85,23 +87,48 @@ int main(int argc, char** argv)
 
     // Get the device
     rs2::context ctx;
-    rs2::device_list devices = ctx.query_devices();
-    rs2::device dev = devices[0];
+    rs2::device dev;
+    bool dev_found = false;
 
-    // Create the server using supplied parameters
-    rs_server_params params = { strdup(addr.c_str()), port, 0 };
-    rs2::net_server rs_server(dev, params);
+    std::string serial = "";
+    if (arg_serial.isSet())
+    {
+        serial = arg_serial.getValue();
+        for (auto&& device : ctx.query_devices()) {
+            std::string dev_serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+            if (serial.compare(dev_serial) == 0) {
+                dev = device;
+                dev_found = true;
+                break;
+            }
+        }
+    } else {
+        rs2::device_list devices = ctx.query_devices();
+        if (devices.size()) {
+            dev = devices[0];
+            dev_found = true;
+        }
+    }
 
-    // Install the exit handler
-    shutdown_handler = [&](int signal) {
-        INF << "Exiting\n";
-        rs_server.stop();
-        exit(signal);
-    };
-    std::signal(SIGINT, signal_handler);
+    if (dev_found) {
+        std::cout << "Using " << dev.get_info(RS2_CAMERA_INFO_NAME) << ", serial number " << dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
+        
+        // Create the server using supplied parameters
+        rs_server_params params = { strdup(addr.c_str()), port, 0 };
+        rs2::net_server rs_server(dev, params);
 
-    // Start the server
-    rs_server.start(); // Never returns
+        // Install the exit handler
+        shutdown_handler = [&](int signal) {
+            INF << "Exiting\n";
+            rs_server.stop();
+            exit(signal);
+        };
+        std::signal(SIGINT, signal_handler);
 
+        // Start the server
+        rs_server.start(); // Never returns
+    } else {
+        std::cout << "Cannot find device" << std::endl;
+    }
     return 0;
 }

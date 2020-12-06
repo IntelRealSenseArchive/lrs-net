@@ -54,8 +54,24 @@ int main(int argc, char * argv[]) try
         std::cout << "Device serial: " << dev.get_info(rs2_camera_info::RS2_CAMERA_INFO_SERIAL_NUMBER) << std::endl;
     }
 
+    for (rs2::sensor sensor : dev.query_sensors()) {
+        std::string sensor_name(sensor.supports(RS2_CAMERA_INFO_NAME) ? sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
+
+        std::cout << "Sensor\t: " << sensor_name.c_str() << std::endl;
+
+        for (auto stream_profile : sensor.get_stream_profiles()) {
+            rs2::video_stream_profile stream = static_cast<rs2::video_stream_profile>(stream_profile);
+            
+            std::cout << " Stream\t: " << std::setw(10) << stream.stream_type() << " " << stream.stream_index() << " " << std::setw(14) << rs2_format_to_string(stream.format())
+                << std::setw(14) << (std::to_string(stream.width()) + "x" + std::to_string(stream.height()) + "x" + std::to_string(stream.fps())) << std::endl;
+        }
+    }
+
     cfg.enable_device("555555555555");
-    cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_YUYV, 60);
+    // cfg.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_YUYV, 60);
+    cfg.enable_stream(RS2_STREAM_DEPTH, 640, 480, RS2_FORMAT_Z16, 60);
+    // cfg.enable_stream(RS2_STREAM_INFRARED, 1, 640, 480, RS2_FORMAT_Y8, 60);
+    // cfg.enable_stream(RS2_STREAM_INFRARED, 2, 640, 480, RS2_FORMAT_Y8, 60);
 
     rs2::pipeline_profile pp = pipe.start(cfg);
     std::vector<rs2::stream_profile> profiles = pp.get_streams();
@@ -76,7 +92,8 @@ int main(int argc, char * argv[]) try
             rs2::frameset fs = pipe.wait_for_frames(1000);
             num_frames++;
 #if 1            
-            app.show(fs.apply_filter(yuv));
+            // app.show(fs.apply_filter(yuv));
+            app.show(fs.apply_filter(colorizer));
             auto end = std::chrono::system_clock::now();
             std::chrono::duration<double> elapsed = end-start;
             if (elapsed.count() > 0) {

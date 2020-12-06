@@ -42,8 +42,8 @@ private:
 
 #if 0
                 fFrameSize = m_pqs->get_size();
-#else                
-                fFrameSize = *(uint32_t*)frame.get();
+#else                                
+                fFrameSize = ((chunk_header_t*)frame.get())->size;
 #endif                
                 memcpy(fTo, frame.get(), fFrameSize);
                 

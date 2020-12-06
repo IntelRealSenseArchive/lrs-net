@@ -29,6 +29,8 @@
 
 #define FRAME_SIZE (640*480*2)
 
+class rs_net_device; // forward
+
 // Define a class to hold per-stream state that we maintain throughout each stream's lifetime:
 class StreamClientState {
 public:
@@ -43,29 +45,56 @@ public:
   double duration;
 };
 
-class ip_sensor
-{
-public:
-    ip_sensor() : is_enabled(false) {};
-    ~ip_sensor() {};
+// class ip_sensor
+// {
+// public:
+//     ip_sensor() : is_enabled(false) {};
+//     ~ip_sensor() {};
 
-    std::shared_ptr<rs2::software_sensor> sw_sensor; // TODO: remove smart ptr here
-    std::list<long long int> active_streams_keys;
-    std::map<rs2_option, float> sensors_option;
+//     std::shared_ptr<rs2::software_sensor> sw_sensor; // TODO: remove smart ptr here
+//     std::list<long long int> active_streams_keys;
+//     std::map<rs2_option, float> sensors_option;
 
-    bool is_enabled;
+//     bool is_enabled;
 
-//    RsRtsp* rtsp_client; // TODO: get smart ptr from rtsp client creator
-};
+// //    RsRtsp* rtsp_client; // TODO: get smart ptr from rtsp client creator
+// };
+
+using SoftSensor     = std::shared_ptr<rs2::software_sensor>;
+using StreamProfile  = std::shared_ptr<rs2::stream_profile>;
+using StreamProfiles = std::shared_ptr<std::vector<StreamProfile>>;
+using ActiveProfiles = std::map<std::shared_ptr<StreamProfile>, MediaSubsession*>;
+
+typedef struct rs_net_sensor {
+// public:    
+    std::string    name;
+    SoftSensor     sw_sensor;
+    StreamProfiles stream_profiles;
+    ActiveProfiles active_profiles;
+
+// private:
+    bool current_state;
+    bool prev_state;
+
+    MediaSubsessionIterator* iter;
+    MediaSession* session;
+} rs_net_sensor;
+
+using NetSensor      = std::shared_ptr<rs_net_sensor>;
 
 #define COMPRESSION_ENABLED
 #define COMPRESSION_ZSTD
 
 #define CHUNK_SIZE (1024*2)
+#pragma pack (push, 1)
 typedef struct chunk_header{
-    uint32_t size;
+    uint16_t size;
     uint32_t offset;
+    uint8_t  status;
+    uint8_t  meta_id;
+    uint64_t meta_data;
 } chunk_header_t;
+#pragma pack(pop)
 #define CHUNK_HLEN (sizeof(chunk_header_t))
 
 class RSSink : public MediaSink
@@ -78,6 +107,8 @@ public:
 
     uint8_t* getFrame();
     void     popFrame();
+
+    StreamProfile profile;
 
 private:
     RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamIdm, uint32_t threshold); // called only by "createNew()"
@@ -107,10 +138,10 @@ private:
 class RSRTSPClient : public RTSPClient
 {
 public:
-    static RSRTSPClient* createNew(UsageEnvironment& env, char const* rtspURL);
+    static RSRTSPClient* createNew(UsageEnvironment& env, char const* rtspURL, rs_net_device& parent);
 
 protected:
-    RSRTSPClient(UsageEnvironment& env, char const* rtspURL); // called only by createNew();
+    RSRTSPClient(UsageEnvironment& env, char const* rtspURL, rs_net_device& parent); // called only by createNew();
     virtual ~RSRTSPClient();
 
     virtual Boolean setRequestFields(RequestRecord* request,
@@ -153,6 +184,7 @@ public:
     static void streamTimerHandler(void* clientData);
 
     bool ready;
+    rs_net_device& m_parent;
 };
 
 class rs_net_device
@@ -163,6 +195,42 @@ public:
    ~rs_net_device();
 
     // ip_sensor* remote_sensors[NUM_OF_SENSORS];
+
+    StreamProfile add_stream(std::string sensor_name, rs2_video_stream stream) {
+        if (sensors.find(sensor_name) == sensors.end()) {
+            NetSensor netsensor(new rs_net_sensor);
+            netsensor->sw_sensor = std::make_shared<rs2::software_sensor>(m_device.add_sensor(sensor_name));
+
+            StreamProfiles profiles(new std::vector<StreamProfile>);
+            netsensor->stream_profiles = profiles;
+
+            sensors.insert(std::pair<std::string, NetSensor>(sensor_name, netsensor));
+        }
+
+        NetSensor netsensor = sensors.find(sensor_name)->second;
+        StreamProfile sp = std::make_shared<rs2::stream_profile>(netsensor->sw_sensor->add_video_stream(stream, true));
+        netsensor->stream_profiles->emplace_back(sp);
+
+        return sp;
+    };
+
+    StreamProfile get_profile(rs2_video_stream stream) {
+        for (auto sensor : sensors) {
+            for (auto p : *(sensor.second->stream_profiles)) {
+                auto profile = p->as<rs2::video_stream_profile>();
+                if (profile.stream_index() == stream.index &&
+                    profile.stream_type()  == stream.type  &&
+                    profile.format()       == stream.fmt   &&
+                    profile.fps()          == stream.fps   &&
+                    profile.width()        == stream.width &&
+                    profile.height()       == stream.height) return p;
+            }
+        }
+
+        return nullptr;
+    };
+
+    rs2_intrinsics intrinsics;
 
 private:
     std::string  m_ip_address;
@@ -185,13 +253,20 @@ private:
     void* doRTP();
 
     void doDevice();
-    std::shared_ptr<rs2::software_sensor> rgb;
-    std::shared_ptr<rs2::stream_profile>  sp;
+
+    // std::shared_ptr<rs2::software_sensor> rgb;
+    // std::shared_ptr<rs2::software_sensor> stereo;
+    // std::shared_ptr<rs2::stream_profile>  sp;
 
     std::mutex m_mutex;
     std::condition_variable m_init_done;
 
     uint8_t* m_frame_raw;
+
+    std::map<std::string, NetSensor>      sensors;
+    // std::map<std::string, StreamProfiles>  sensor_profiles;
+
+    // std::vector<rs_net_sensor> sensors;
 
     // bool is_device_alive;
 

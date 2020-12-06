@@ -20,14 +20,7 @@ public:
     }
 
 private:
-    RsRTSPServer(UsageEnvironment& env, int socket, Port port) : RTSPServer(env, socket, port, NULL, 65) {
-        rs2::context ctx;
-        for (auto&& dev : ctx.query_devices()) {
-            m_serials += dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-            m_serials += "\r\n";
-        }
-        std::cout << "Handling the following cameras: " << std::endl << m_serials;
-    };
+    RsRTSPServer(UsageEnvironment& env, int socket, Port port) : RTSPServer(env, socket, port, NULL, 65) {};
     virtual ~RsRTSPServer() {};
 
 protected:
@@ -116,7 +109,7 @@ protected: // redefined virtual functions
         return new RsRTSPClientConnection(*this, clientSocket, clientAddr);
     }
 
-protected:
+private:
     std::string m_serials;
 };
 
@@ -138,4 +131,6 @@ private:
     // std::vector<rs2::video_stream_profile> supported_stream_profiles; // streams for extrinsics map creation
 
     unsigned int port;
+    std::string m_serial;
+    std::string m_name;
 };

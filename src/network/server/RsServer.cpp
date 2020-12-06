@@ -22,6 +22,9 @@ using namespace TCLAP;
 
 server::server(rs2::device dev, std::string addr, int port)
 {
+    m_serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
+    m_name   = dev.get_info(RS2_CAMERA_INFO_NAME);
+
     ReceivingInterfaceAddr = inet_addr(addr.c_str());
     OutPacketBuffer::increaseMaxSizeTo(640*480*2); // TODO: put real values
 
@@ -36,11 +39,20 @@ server::server(rs2::device dev, std::string addr, int port)
         exit(1);
     }
 
+    ServerMediaSession* sms = ServerMediaSession::createNew(*env, "", m_name.c_str(), "Session streamed by LRS-Net");
     for (rs2::sensor sensor : dev.query_sensors()) {
         std::string sensor_name(sensor.supports(RS2_CAMERA_INFO_NAME) ? sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
 
-        std::cout << "Sensor\t: " << sensor_name.c_str() << std::endl;
-        ServerMediaSession* sms = ServerMediaSession::createNew(*env, sensor_name.c_str(), sensor_name.c_str(), "Session streamed by LRS-Net");
+        std::cout << "Sensor\t: " << sensor_name.c_str();
+        if (sensor.get_active_streams().size() > 0) {
+            std::cout << " is streaming, stopping and closing it.";
+            sensor.stop();
+            sensor.close();            
+        }
+        std::cout << std::endl;
+
+        // std::string sensor_path = m_serial + "/" + sensor_name;
+        // ServerMediaSession* sms = ServerMediaSession::createNew(*env, sensor_path.c_str(), sensor_name.c_str(), "Session streamed by LRS-Net");
 
         for (auto stream_profile : sensor.get_stream_profiles()) {
             rs2::video_stream_profile stream = static_cast<rs2::video_stream_profile>(stream_profile);
@@ -64,12 +76,18 @@ server::server(rs2::device dev, std::string addr, int port)
             std::cout << "ignored" << std::endl;
         }
 
-        srv->addServerMediaSession(sms);
-        char* url = srv->rtspURL(sms); // should be deallocated later
-        std::cout << "Access\t: " << url << std::endl << std::endl;
+        // srv->addServerMediaSession(sms);
+        // char* url = srv->rtspURL(sms); // should be deallocated later
+        // std::cout << "Access\t: " << url << std::endl << std::endl;
 
-        delete[] url;
+        // delete[] url;
     }
+
+    srv->addServerMediaSession(sms);
+    char* url = srv->rtspURL(sms); // should be deallocated later
+    std::cout << "Access\t: " << url << std::endl << std::endl;
+
+    delete[] url;
 }
 
 void server::start()

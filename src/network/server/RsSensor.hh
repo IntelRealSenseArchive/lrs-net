@@ -28,13 +28,6 @@ using ConsumerQPair = std::pair<void*, FrameDataQ>;
 
 ////////////////////////////////////////////////////////////
 
-// #define CHUNK_SIZE (2*1024)
-// typedef struct chunk_header{
-//     uint32_t size;
-//     uint32_t offset;
-// } chunk_header_t;
-// #define CHUNK_HLEN (sizeof(chunk_header_t))
-
 class frames_queue {
 public:
     frames_queue(rs2::sensor sensor, rs2::video_stream_profile stream)
@@ -58,14 +51,19 @@ public:
         return false;
     };
     
-    uint32_t get_type()   { return m_stream.stream_type();   };
-    uint32_t get_index()  { return m_stream.stream_index();  };
-    uint32_t get_fps()    { return m_stream.fps();           };
+    std::string get_name() { return m_stream.stream_name(); };
 
-    uint32_t get_width()  { return m_stream.width();  };
-    uint32_t get_height() { return m_stream.height(); };
+    uint32_t get_format()  { return m_stream.format();   };
+    uint32_t get_bpp()     { return m_stream.format() == RS2_FORMAT_Y8 ? 1 : 2; };
 
-    uint32_t get_size()   { return 640*480*2; };
+    uint32_t get_type()    { return m_stream.stream_type();   };
+    uint32_t get_index()   { return m_stream.stream_index();  };
+    uint32_t get_fps()     { return m_stream.fps();           };
+
+    uint32_t get_width()   { return m_stream.width();  };
+    uint32_t get_height()  { return m_stream.height(); };
+
+    // uint32_t get_size()   { return 640*480*2; };
 
     FrameData get_frame(void* consumer)  { 
         if (m_queues.find(consumer) == m_queues.end()) {
@@ -76,12 +74,13 @@ public:
 
         if (!is_streaming()) {
             // start the sensor
-            std::cout << "Sensor started for stream: " << std::setw(15) << get_type()
-                                                       << std::setw(15) << rs2_format_to_string(m_stream.format())      
-                                                       << std::setw(15) << get_width() << "x" << get_height() << "x" << get_fps() << std::endl;    
+            std::cout << "Sensor " << m_sensor.get_info(RS2_CAMERA_INFO_NAME) << " started for stream: " 
+                << std::setw(15) << get_type()
+                << std::setw(15) << rs2_format_to_string(m_stream.format())      
+                << std::setw(15) << get_width() << "x" << get_height() << "x" << get_fps() << std::endl;    
 
             m_sensor.open(m_stream);
-            m_sensor.set_option(RS2_OPTION_AUTO_EXPOSURE_PRIORITY, 0); // TODO: should be removed
+            // m_sensor.set_option(RS2_OPTION_AUTO_EXPOSURE_PRIORITY, 0); // TODO: should be removed
 
             auto callback = [&](const rs2::frame& frame) {
 #if 1                
@@ -96,22 +95,36 @@ public:
                 uint32_t offset = 0;
                 uint32_t out_size = 0;
 
+                // slice frame into chunks
                 while (offset < size) {
                     FrameData chunk(new uint8_t[CHUNK_SIZE + CHUNK_HLEN]);
                     chunk_header_t* ch = (chunk_header_t*)chunk.get();
                     ch->offset = offset;
                     ch->size   = sizeof(chunk_header_t);
+                    int ret = 0;
+                    int csz = size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset;
   #ifdef COMPRESSION_ENABLED
     #ifdef COMPRESSION_ZSTD                    
-                    ch->size  += ZSTD_compress((void*)(chunk.get() + CHUNK_HLEN), CHUNK_SIZE, (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, 1);
+                    ret = ZSTD_compress((void*)(chunk.get() + CHUNK_HLEN), CHUNK_SIZE, (void*)(data + offset), csz, 1);
+                    // if the compressed chunk sometimes bigger than original just copy uncompressed data
+                    if (ret < 0) {
+                        ch->status = ch->status & 0xFC; // clean lower two bits - no compression
+                        memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + offset), csz);
+                        ret = csz;
+                    } else {
+                        ch->status = (ch->status & 0xFC) | 1; // set lower bit - ZSTD compression
+                    }
+
     #else
-                    // ch->size  += LZ4_compress_fast((const char*)(data + offset), (char*)(chunk.get() + CHUNK_HLEN), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, CHUNK_SIZE, 10);
-                    ch->size  += LZ4_compress_default((const char*)(data + offset), (char*)(chunk.get() + CHUNK_HLEN), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset, CHUNK_SIZE);
+                    // ch->size  += LZ4_compress_fast((const char*)(data + offset), (char*)(chunk.get() + CHUNK_HLEN), csz, CHUNK_SIZE, 10);
+                    ret = LZ4_compress_default((const char*)(data + offset), (char*)(chunk.get() + CHUNK_HLEN), csz, CHUNK_SIZE);
     #endif
   #else
-                    memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + offset), size - offset > CHUNK_SIZE ? CHUNK_SIZE : size - offset);
-                    ch->size  += CHUNK_SIZE;
+                    memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + offset), csz);
+                    ret = csz;
+                    ch->status = ch->status & 0xFC; // clean lower two bits - no compression
   #endif                    
+                    ch->size  += ret;
                     out_size  += ch->size;
                     offset    += CHUNK_SIZE;
 

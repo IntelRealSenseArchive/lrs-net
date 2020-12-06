@@ -44,7 +44,14 @@ protected:
         const char* auxSDPLine = OnDemandServerMediaSubsession::getAuxSDPLine(rtpSink, inputSource);
         if (auxSDPLine == NULL) auxSDPLine = "";
 
-        sprintf(privateAuxSDPLine, "%sactive=%s\r\na=x-dimensions:%d,%d\r\na=x-framerate: %d\r\n", auxSDPLine, m_queue->is_streaming() ? "yes" : "no", m_queue->get_width(), m_queue->get_height(), m_queue->get_fps());
+        sprintf(privateAuxSDPLine, "%sactive=%s;sensor=%s;type=%u;index=%u;format=%u;bpp=%u\r\na=x-dimensions:%d,%d\r\na=x-framerate: %d\r\n", auxSDPLine, 
+            m_queue->is_streaming() ? "yes" : "no", 
+            m_queue->get_name().c_str(), 
+            m_queue->get_type(), 
+            m_queue->get_index(),             
+            m_queue->get_format(),             
+            m_queue->get_bpp(),             
+            m_queue->get_width(), m_queue->get_height(), m_queue->get_fps());
         return privateAuxSDPLine;
     };
 
