@@ -27,6 +27,10 @@
 
 #include <lz4.h>
 
+#include "httplib.h"
+
+#include <stdlib.h>
+
 using namespace std::placeholders;
 
 ////
@@ -108,214 +112,188 @@ void RsMediaSubsessionIterator::reset() {
 
 ////
 
-RSRTSPClient* RSRTSPClient::createNew(UsageEnvironment& env, char const* rtspURL, rs_net_device& parent)
-{
-    return new RSRTSPClient(env, rtspURL, parent);
-}
-
-RSRTSPClient::RSRTSPClient(UsageEnvironment& env, char const* rtspURL, rs_net_device& parent)
-    : RTSPClient(env, rtspURL, 0, "", 0, -1), ready(false), m_parent(parent)
-{}
-
-RSRTSPClient::~RSRTSPClient() {}
-
-// Implementation of "StreamClientState":
-
-// StreamClientState::StreamClientState()
-//     : iter(NULL)
-//     , session(NULL)
-//     , subsession(NULL)
-//     , streamTimerTask(NULL)
-//     , duration(0.0)
-// {}
-
-// StreamClientState::~StreamClientState()
-// {
-//     delete iter;
-//     if(session != NULL)
-//     {
-//         // We also need to delete "session", and unschedule "streamTimerTask" (if set)
-//         UsageEnvironment& env = session->envir(); // alias
-
-//         env.taskScheduler().unscheduleDelayedTask(streamTimerTask);
-//         Medium::close(session);
-//     }
-// }
-
-void* rs_net_device::doRTP() {
-    std::cout << "RTP support thread started" << std::endl;
-
-    std::string rtspURL;
-    rtspURL.append("rtsp://").append(m_ip_address).append(":").append(std::to_string(m_ip_port)).append("/");
-    // rtspURL.append("rtsp://").append(m_ip_address).append(":").append(std::to_string(m_ip_port)).append("/RGB Camera");
-    // rtspURL.append("rtsp://").append(m_ip_address).append(":").append(std::to_string(m_ip_port)).append("/Stereo Module");
-
-    std::cout << "Connecting to " << rtspURL << std::endl;
+void rs_net_sensor::doRTP() {
+    std::cout << "RTP support thread started for " << m_name << " sensor" << std::endl;
 
     // Start the RTSP client
     TaskScheduler* scheduler = BasicTaskScheduler::createNew(/* 1000 */); // Check this later
-    UsageEnvironment* env = BasicUsageEnvironment::createNew(*scheduler);
+    m_env = BasicUsageEnvironment::createNew(*scheduler);
 
-    RTSPClient::responseBufferSize = 100000;
-    m_rtspClient = RSRTSPClient::createNew(*env, rtspURL.c_str(), *this);
+    // RTSPClient::responseBufferSize = 100000;
+    // m_rtspClient = RSRTSPClient::createNew(*env, m_mrl.c_str());
 
-    if(m_rtspClient == NULL)
-    {
-        std::cout << "Failed to create a RTSP client for URL \"" << rtspURL << "\": " << env->getResultMsg() << "\n";
-        throw std::runtime_error("Cannot create RTSP client");
+    // if(m_rtspClient == NULL)
+    // {
+    //     std::cout << "Failed to create a RTSP client for URL \"" << m_mrl << "\": " << env->getResultMsg() << "\n";
+    //     throw std::runtime_error("Cannot create RTSP client");
+    // }
+
+    // std::cout << "Connected to " << m_mrl << std::endl;
+
+    m_env->taskScheduler().scheduleDelayedTask(100000, doControl, this);
+
+    // m_rtspClient->sendDescribeCommand(RSRTSPClient::continueAfterDESCRIBE);
+
+    m_env->taskScheduler().doEventLoop(&m_eventLoopWatchVariable);
+}
+
+void rs_net_sensor::doControl() {
+    bool current_state = is_streaming();
+    if (current_state != prev_state) {
+        // sensor state changed
+        prev_state = current_state;
+        if (is_streaming()) {
+            std::cout << "Sensor enabled\n";
+
+            RTSPClient::responseBufferSize = 100000;
+            m_rtspClient = RSRTSPClient::createNew(*m_env, m_mrl.c_str());
+
+            if(m_rtspClient == NULL)
+            {
+                std::cout << "Failed to create a RTSP client for URL \"" << m_mrl << "\": " << m_env->getResultMsg() << "\n";
+                throw std::runtime_error("Cannot create RTSP client");
+            }
+
+            std::cout << "Connected to " << m_mrl << std::endl;
+
+            for (auto stream : m_sw_sensor->get_active_streams()) {
+                ProfileQPair pq(stream, new SafeQueue);
+                m_stream_q.insert(pq);
+            }
+            
+            m_rtspClient->playStreams(m_stream_q);
+
+            //         m_stream_profiles[s] = m_rtspClient->get_sink();
+            //         std::cout << "Sink assigned for " << m_name << std::endl;
+        } else {
+            std::cout << "Sensor disabled\n";
+            // disable running RTP sessions
+            m_rtspClient->shutdownStream();
+            m_rtspClient = NULL;
+
+            // remove the queues and their content
+            for (auto pq : m_stream_q) {
+                auto q = pq.second;
+                while (!q->empty()) {
+                    delete q->front();
+                    q->pop();
+                }
+                delete pq.second;
+            }
+            m_stream_q.clear();
+        }
     }
 
-    m_rtspClient->sendListCommand(RSRTSPClient::continueAfterLIST);
-
-    env->taskScheduler().doEventLoop(&m_eventLoopWatchVariable);
+    m_env->taskScheduler().scheduleDelayedTask(100000, doControl, this);
 }
 
 uint32_t chunks_allocated = 0;
 
-void rs_net_device::doDevice() try {
+void rs_net_sensor::doDevice() {
     static uint32_t fps_frame_count = 0;
     static auto beginning = std::chrono::system_clock::now();
 
-    std::cout << "Sensors support thread started" << std::endl;
+    std::cout << "Sensor " << m_name << " support thread started" << std::endl;
 
     int frame_count = 0; 
     bool prev_sensor_state = false;
 
     while (m_eventLoopWatchVariable == 0) {
-        for (auto sensor : sensors) {
-            NetSensor netsensor = sensor.second;
-            auto user_streams = netsensor->sw_sensor->get_active_streams();
-            netsensor->current_state = (user_streams.size() > 0);
+        if (is_streaming())  {
+            // for (ProfileSinkPair psp : m_stream_profiles) {
+            for (ProfileQPair pqp : m_stream_q) {
+                
+                if (pqp.second->empty()) continue;
 
-            if (netsensor->current_state != netsensor->prev_state) {
-                // sensor state changed
-                if (netsensor->current_state) {
-                    std::cout << "Sensor enabled\n";
-                    for (auto stream : user_streams) {
-                        rs2::video_stream_profile s = static_cast<rs2::video_stream_profile>(stream);
-                        std::cout << " Stream : " << std::setw(15) << rs2_stream_to_string(s.stream_type()) 
-                                                  << std::setw(15) << rs2_format_to_string(s.format())      
-                                                  << std::setw(15) << s.width() << "x" << s.height() << "x" << s.fps() << std::endl;
+                auto start = std::chrono::system_clock::now();
 
-                        if (m_rtspClient) {
-                            if (m_rtspClient->ready) {
-                                m_rtspClient->startRTPSession(s);
-                            } else {
-                                std::cout << "Cannot start session: no session exists yet\n";
-                                continue;
-                            }
-                        } else {
-                            std::cout << "Cannot start session: no client exists yet\n";
-                            continue;
-                        }
+                uint32_t size = 0;
+                uint32_t offset = 0;
+                uint32_t total_size = 0;
+
+                while (offset < FRAME_SIZE) {
+                    uint8_t* data = 0;
+                    do {
+                        // data = sink->getFrame();
+                        data = pqp.second->front();
+                    } while (data == 0);
+                    chunk_header_t* ch = (chunk_header_t*)data;
+
+                    if (ch->offset < offset) break;
+
+                    total_size += ch->size;
+                    offset = ch->offset;
+                    int ret = 0;
+                    switch (ch->status & 3) {
+                    case 0:
+                        ret = ch->size - CHUNK_HLEN;
+                        memcpy((void*)(m_frame_raw + offset), (void*)(data + CHUNK_HLEN), ret);
+                        break;
+                    case 1: 
+                        ret = ZSTD_decompress((void*)(m_frame_raw + offset), CHUNK_SIZE, (void*)(data + CHUNK_HLEN), ch->size - CHUNK_HLEN); 
+                        break;
+                    case 2: 
+                        ret = LZ4_decompress_safe((const char*)(data + CHUNK_HLEN), (char*)(m_frame_raw + offset), ch->size - CHUNK_HLEN, CHUNK_SIZE);
+                        ret = ch->size - CHUNK_HLEN;
+                        break;
+                    case 3:
+                        std::cout << "JPEG not implemented yet" << std::endl;
+                        break;
                     }
-                } else {
-                    std::cout << "Sensor disabled\n";
-                    // disable running RTP sessions
-                    if (m_rtspClient) {
-                        m_rtspClient->shutdownStream();
-                    }
+                    size += ret;
+                    // offset += CHUNK_SIZE;
+                    offset += ret;
+
+                    pqp.second->pop();
+                    delete [] data;
+                } 
+
+                uint8_t* frame_raw = new uint8_t[640*480*2];
+                memcpy(frame_raw, m_frame_raw, FRAME_SIZE);
+
+                auto end = std::chrono::system_clock::now();
+                std::chrono::duration<double> elapsed = end - start;
+                std::chrono::duration<double> total_time = end - beginning;
+                fps_frame_count++;
+                double fps;
+                if (total_time.count() > 0) fps = (double)fps_frame_count / (double)total_time.count();
+                else fps = 0;
+                std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) 
+                                                        << elapsed.count() * 1000 << " ms, size " << total_size << " => " << size << ", FPS: " << fps << "\n";                            
+
+                if (total_time > std::chrono::seconds(1)) {
+                    beginning = std::chrono::system_clock::now();
+                    fps_frame_count = 0;
                 }
 
-                netsensor->prev_state = netsensor->current_state;
+                // std::cout << "Chunks: " << chunks_allocated << "\n"; 
+
+                if (frame_raw) {
+                    // send it into device
+                    rs2::video_stream_profile sp = pqp.first.as<rs2::video_stream_profile>();
+                    uint32_t bpp = (sp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
+                    m_sw_sensor->on_video_frame(
+                        { 
+                            (void*)frame_raw, 
+                            [] (void* f) { delete [] (uint8_t*)f; }, 
+                            sp.width() * bpp,
+                            bpp,                                                  
+                            (double)time(NULL), 
+                            RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
+                            ++frame_count, 
+                            sp
+                        }
+                    );
+                }
             }
-
-            if (netsensor->current_state)  {
-                if (m_rtspClient)  {
-                    if (m_rtspClient->m_netsensor->subsession) {
-                        RSSink* sink = (RSSink*)m_rtspClient->m_netsensor->subsession->sink;
-                        if (sink) { // the session might be not created yet
-                            auto start = std::chrono::system_clock::now();
-
-                            uint32_t size = 0;
-                            uint32_t offset = 0;
-                            uint32_t total_size = 0;
-
-                            while (offset < FRAME_SIZE) {
-                                uint8_t* data = 0;
-                                do {
-                                    data = sink->getFrame();
-                                } while (data == 0);
-                                chunk_header_t* ch = (chunk_header_t*)data;
-
-                                if (ch->offset < offset) break;
-
-                                total_size += ch->size;
-                                offset = ch->offset;
-                                int ret = 0;
-                                switch (ch->status & 3) {
-                                case 0:
-                                    ret = ch->size - CHUNK_HLEN;
-                                    memcpy((void*)(m_frame_raw + offset), (void*)(data + CHUNK_HLEN), ret);
-                                    break;
-                                case 1: 
-                                    ret = ZSTD_decompress((void*)(m_frame_raw + offset), CHUNK_SIZE, (void*)(data + CHUNK_HLEN), ch->size - CHUNK_HLEN); 
-                                    break;
-                                case 2: 
-                                    ret = LZ4_decompress_safe((const char*)(data + CHUNK_HLEN), (char*)(m_frame_raw + offset), ch->size - CHUNK_HLEN, CHUNK_SIZE);
-                                    ret = ch->size - CHUNK_HLEN;
-                                    break;
-                                case 3:
-                                    std::cout << "JPEG not implemented yet" << std::endl;
-                                    break;
-                                }
-                                size += ret;
-                                // offset += CHUNK_SIZE;
-                                offset += ret;
-
-                                sink->popFrame();
-                                delete [] data;
-                            } 
-
-                            uint8_t* frame_raw = new uint8_t[640*480*2];
-                            memcpy(frame_raw, m_frame_raw, FRAME_SIZE);
-
-                            auto end = std::chrono::system_clock::now();
-                            std::chrono::duration<double> elapsed = end - start;
-                            std::chrono::duration<double> total_time = end - beginning;
-                            fps_frame_count++;
-                            double fps;
-                            if (total_time.count() > 0) fps = (double)fps_frame_count / (double)total_time.count();
-                            else fps = 0;
-                            std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) 
-                                                                    << elapsed.count() * 1000 << " ms, size " << total_size << " => " << size << ", FPS: " << fps << "\n";                            
-
-                            if (total_time > std::chrono::seconds(1)) {
-                                beginning = std::chrono::system_clock::now();
-                                fps_frame_count = 0;
-                            }
-
-                            // std::cout << "Chunks: " << chunks_allocated << "\n"; 
-
-                            if (frame_raw) {
-                                // send it into device
-                                netsensor->sw_sensor->on_video_frame(
-                                    { 
-                                        (void*)frame_raw, 
-                                        [] (void* f) { delete [] (uint8_t*)f; }, 
-                                        m_rtspClient->m_netsensor->subsession->videoWidth() * 1,   // IR:1 COLOR and DEPTH:2
-                                        1,                                                  // IR:1 COLOR and DEPTH:2
-                                        (double)time(NULL), 
-                                        RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
-                                        ++frame_count, 
-                                        sink->profile->get()
-                                    }
-                                );
-                            }
-                        } else std::cout << "No sink exists yet\n";
-                    } // else std::cout << "No subsession exists yet\n";
-                } else std::cout << "No client exists yet\n";
-            }
-        }        
+        }
     }
 
-    std::cout << "Sensors support thread exited" << std::endl;
-} catch (...) {
-    std::cout << "Device support thread crashed.\n";
+    std::cout << "Sensor " << m_name << " support thread exited" << std::endl;
 }
 
 rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_address)
-    :m_device(sw_device), m_eventLoopWatchVariable(0), m_rtspClient(0)
+    :m_device(sw_device) // , m_eventLoopWatchVariable(0), m_rtspClient(0)
 {
     // parse the parameters and set address and port
     int colon = ip_address.find(":");
@@ -331,75 +309,55 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
             std::cout << "WARNING: invalid port specified, using default";
         }
 
-    //TODO// Obtain number of sensors and their names via HTTP (possible with corresponding SDP to use later with DESCRIBE)
+    // Obtain number of sensors and their names via HTTP and construct software device. 
+    httplib::Client client(m_ip_address, 8080);
+    auto res = client.Get("/query");
 
-    // typedef void * (*THREADFUNCPTR)(void *);
-    // if (pthread_attr_init(&m_th_rtp_attr) == 0) {
-    //     if (pthread_attr_setschedpolicy(&m_th_rtp_attr, SCHED_RR) == 0) {
-    //         struct sched_param sch_param = {99};
-    //         if (pthread_attr_setschedparam(&m_th_rtp_attr, &sch_param) == 0) {
-    //             if (pthread_create(&m_th_rtp, &m_th_rtp_attr, (THREADFUNCPTR) &rs_net_device::doRTP, this) == 0) {
-    //                 std::cout << "RTP thread created\n";
-    //             } else std::cout << "Cannot create thread\n";
-    //         } else std::cout << "Cannot set scheduling priority\n";
-    //     } else std::cout << "Cannot set scheduling policy\n";
-    // } else std::cout << "Cannot initialize attributes\n";
+    if (res->status == 200) {
+        // parse the response in form:
+        // <sensor_name>|<sensor_mrl>|<sensor_profile1>|<sensor_profile2>|...|<sensor_profileN>
 
-    m_rtp = std::thread( [this](){ doRTP(); });
-    std::this_thread::sleep_for(std::chrono::milliseconds(10)); 
+        std::string query = res->body;
+        while (!query.empty()) {
+            // get the sensor line
+            uint32_t line_pos = query.find("\r\n");
+            std::string sensor = query.substr(0, line_pos) + "|";
+            query.erase(0, line_pos + 2);
 
-    // This section constructs software device. 
-    // rgb = std::make_shared<rs2::software_sensor>(m_device.add_sensor("COLOR"));
-    // stereo = std::make_shared<rs2::software_sensor>(m_device.add_sensor("DEPTH"));
+            // get the sensor name
+            uint32_t pos = sensor.find("|");
+            std::string sensor_name = sensor.substr(0, pos);
+            sensor.erase(0, pos + 1);
+
+            NetSensor netsensor(new rs_net_sensor(m_device, sensor_name));
+
+            // get the sensor MRL
+            pos = sensor.find("|");
+            netsensor->set_mrl(sensor.substr(0, pos));
+            sensor.erase(0, pos + 1);
+
+            while (!sensor.empty()) {
+                pos = sensor.find("|");
+                uint64_t key = atol(sensor.substr(0, pos).c_str());
+                sensor.erase(0, pos + 1);
+
+                rs2_video_stream stream = slib::key2stream(key);
+                netsensor->add_profile(stream);
+            }
+
+            sensors.emplace_back(netsensor);
+        }
+    }
+
+    std::cout << "Software device is ready" << std::endl;
 
     intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
 
-    // rs2_intrinsics rgb_intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
-    // rs2_intrinsics stereo_intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
-
-    // Color
-    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 0,  9, 640, 480,  6, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 0, 19, 640, 480, 15, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 0, 29, 640, 480, 30, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(rgb->add_video_stream({ RS2_STREAM_COLOR, 0, 39, 640, 480, 60, 8, RS2_FORMAT_YUYV, rgb_intrinsics }, true));
-
-    // Depth
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_DEPTH, 0,  9, 640, 480,  6, 8, RS2_FORMAT_Z16, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_DEPTH, 0, 19, 640, 480, 15, 8, RS2_FORMAT_Z16, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_DEPTH, 0, 29, 640, 480, 30, 8, RS2_FORMAT_Z16, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_DEPTH, 0, 39, 640, 480, 60, 8, RS2_FORMAT_Z16, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_DEPTH, 0, 49, 640, 480, 90, 8, RS2_FORMAT_Z16, stereo_intrinsics }, true));
-
-    // IR 1
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 1,  9, 640, 480,  6, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 1, 19, 640, 480, 15, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 1, 29, 640, 480, 30, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 1, 39, 640, 480, 60, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
-
-    // IR 2
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 2,  9, 640, 480,  6, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 2, 19, 640, 480, 15, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 2, 29, 640, 480, 30, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
-    // sp = std::make_shared<rs2::stream_profile>(stereo->add_video_stream({ RS2_STREAM_INFRARED, 2, 39, 640, 480, 60, 8, RS2_FORMAT_Y8, stereo_intrinsics }, true));
-
-    // m_frame_raw = new uint8_t[640*480*2];
-    m_frame_raw = (uint8_t*)malloc(640*480*2);
-    if (m_frame_raw == NULL) throw std::runtime_error("Cannot allocate memory");
-    else std::cout << "Buffer allocated: " << (void*)m_frame_raw << std::endl;
-    m_dev = std::thread( [this](){ doDevice(); } ); 
+    for (auto netsensor : sensors) netsensor->start();
 }
 
 rs_net_device::~rs_net_device() 
 {
-    m_eventLoopWatchVariable = 1;
-    if (m_rtp.joinable()) m_rtp.join();
-    if (m_dev.joinable()) m_dev.join();
-
-    if (m_frame_raw) {
-        free(m_frame_raw);
-        // delete [] m_frame_raw;
-        m_frame_raw = NULL;
-    }
 }
 
 void RSRTSPClient::shutdownStream()
@@ -407,59 +365,35 @@ void RSRTSPClient::shutdownStream()
     UsageEnvironment& env = envir(); // alias
 
     // First, check whether any subsessions have still to be closed:
-    if(m_netsensor->session != NULL)
-    {
+    if (m_session != NULL) {
         Boolean someSubsessionsWereActive = False;
-        MediaSubsessionIterator iter(*m_netsensor->session);
+        MediaSubsessionIterator iter(*m_session);
         MediaSubsession* subsession;
 
-        while((subsession = iter.next()) != NULL)
-        {
-            if(subsession->sink != NULL)
-            {
+        while ((subsession = iter.next()) != NULL) {
+            if (subsession->sink != NULL) {
                 Medium::close(subsession->sink);
                 subsession->sink = NULL;
-
-                if(subsession->rtcpInstance() != NULL)
-                {
+                if (subsession->rtcpInstance() != NULL) {
                     subsession->rtcpInstance()->setByeHandler(NULL, NULL); // in case the server sends a RTCP "BYE" while handling "TEARDOWN"
                 }
-
                 someSubsessionsWereActive = True;
             }
         }
 
-        if(someSubsessionsWereActive)
-        {
+        if (someSubsessionsWereActive) {
             // Send a RTSP "TEARDOWN" command, to tell the server to shutdown the stream.
             // Don't bother handling the response to the "TEARDOWN".
-            sendTeardownCommand(*m_netsensor->session, NULL);
+            sendTeardownCommand(*m_session, NULL);
         }
+
+        m_session->close(m_session);
+        m_session = NULL;
     }
 
     std::cout << "Closing the stream.\n";
+    // Do not shutdown the RTSP client
     Medium::close(this);
-    // Note that this will also cause this stream's "StreamClientState" structure to get reclaimed.
-}
-
-unsigned RSRTSPClient::sendListCommand(responseHandler* responseHandler, Authenticator* authenticator) {
-    std::cout << "Sending LIST command" << std::endl;
-
-    if (fCurrentAuthenticator < authenticator) fCurrentAuthenticator = *authenticator;
-    return sendRequest(new RequestRecord(++fCSeq, "LIST", responseHandler));
-}
-
-// static callback
-void RSRTSPClient::continueAfterLIST(RTSPClient* rtspClient, int resultCode, char* resultString)
-{
-    return ((RSRTSPClient*)rtspClient)->continueAfterLIST(resultCode, resultString);
-}
-
-// member
-void RSRTSPClient::continueAfterLIST(int resultCode, char* resultString)
-{
-    // std::cout << "Got response for the LIST command: " << std::endl << resultString << std::endl;
-    sendDescribeCommand(RSRTSPClient::continueAfterDESCRIBE);
 }
 
 // static callback
@@ -471,137 +405,114 @@ void RSRTSPClient::continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode,
 // member
 void RSRTSPClient::continueAfterDESCRIBE(int resultCode, char* resultString)
 {
-    do {
-        UsageEnvironment& env = envir(); // alias
+    if(resultCode != 0) {
+        std::cout << "Failed to get a SDP description: " << resultString << "\n";
+        delete[] resultString;
+        throw std::runtime_error("Failed to get a SDP description");
+    } else {
+        m_sdp = std::string(resultString);
+        delete[] resultString; // because we don't need it anymore
+    }
 
-        if(resultCode != 0) {
-            std::cout << "Failed to get a SDP description: " << resultString << "\n";
-            delete[] resultString;
-            throw std::runtime_error("Failed to get a SDP description");
-            break;
-        }
+    prepareSession();
+    playSession();
+}
 
-        char* const sdpDescription = resultString;
-        std::cout << "Got a SDP description:\n" << sdpDescription << "\n";
+void RSRTSPClient::prepareSession() {
+    UsageEnvironment& env = envir(); // alias
 
-        // Create a media session object from this SDP description:
-        RsMediaSession* session = RsMediaSession::createNew(env, sdpDescription);
-        // m_netsensor->session = RsMediaSession::createNew(env, sdpDescription);
-        delete[] sdpDescription; // because we don't need it anymore
+    // Create a media session object from this SDP description:
+    std::cout << "SDP description:\n" << m_sdp << "\n";
+    m_session = RsMediaSession::createNew(env, m_sdp.c_str());
 
-        if (session == NULL) {
-            std::cout << "Failed to create a MediaSession object from the SDP description: " << env.getResultMsg() << "\n";
-            throw std::runtime_error("Malformed server response");
-            break;
-        } else if (!session->hasSubsessions()) {
-            std::cout << "This session has no media subsessions (i.e., no \"m=\" lines)\n";
-            throw std::runtime_error("No profiles found");
-            break;
-        } else {
-            std::cout << "Session created " << session->name() << "/" << session->sessionDescription() << "/" << session->controlPath() << "\n";
-
-            // Create the profiles
-            MediaSubsessionIterator it(*session);
-            while (MediaSubsession* subsession = it.next()) {
-                uint32_t uid = 0;
-                std::string sensorName = subsession->attrVal_str("sensor");
-                rs2_video_stream stream = {
-                    (rs2_stream)subsession->attrVal_unsigned("type"),
-                    subsession->attrVal_unsigned("index"),
-                    uid++,
-                    subsession->videoWidth(),
-                    subsession->videoHeight(),
-                    subsession->videoFPS(),
-                    subsession->attrVal_unsigned("bpp"),
-                    (rs2_format)subsession->attrVal_unsigned("format"),
-                    m_parent.intrinsics
-                };
-
-                // add the profile to the SW device
-                m_netsensor = m_parent.add_stream(sensorName, stream);
-                m_netsensor->session = session;
-                // RSSink* sink = RSSink::createNew(env, *m_scs.subsession, url(), m_scs.subsession->videoWidth() * m_scs.subsession->videoHeight() * m_scs.subsession->videoFPS());
-                // m_scs.subsession->sink = sink;
-                // sink->profile = m_parent.add_stream(sensorName, stream);
-            }
-
-            ready = true;
-        }
+    if (m_session == NULL) {
+        std::cout << "Failed to create a MediaSession object from the SDP description: " << env.getResultMsg() << "\n";
+        throw std::runtime_error("Malformed server response");
+    } else if (!m_session->hasSubsessions()) {
+        std::cout << "This session has no media subsessions (i.e., no \"m=\" lines)\n";
+        throw std::runtime_error("No profiles found");
+    } else {
+        std::cout << "Session created " << m_session->name() << "/" << m_session->sessionDescription() << "/" << m_session->controlPath() << "\n";
+        ready = true;
         return;
-    } while (0);
+    }
 
     // An unrecoverable error occurred with this stream.
     shutdownStream();
 }
 
-void RSRTSPClient::startRTPSession(rs2::video_stream_profile stream) {
-    bool profile_found = false;
+void RSRTSPClient::playSession() {
+    // setup streams first
+    // if (m_stream_it == NULL) m_stream_it = new std::vector<rs2::stream_profile>::iterator(m_streams.begin());
+    if (m_pqm_it == NULL) m_pqm_it = new ProfileQMap::iterator(m_pqm.begin());
 
-    // Then, create and set up our data source objects for the session.  We do this by iterating over the session's 'subsessions',
-    // calling "MediaSubsession::initiate()", and then sending a RTSP "SETUP" command, on each one.
-    // (Each 'subsession' will have its own data source.)
-    MediaSubsessionIterator it(*m_netsensor->session);
+    while (*m_pqm_it != m_pqm.end()) {
+        rs2::video_stream_profile stream = (*m_pqm_it)->first.as<rs2::video_stream_profile>();
+        // (*m_stream_it)++;
 
-    uint32_t stype = stream.stream_type();
-    std::cout << "Looking  for " << stream.width() << "x" << stream.height() << "x" << stream.fps() << ", type " << stype << ", index " << stream.stream_index() << std::endl;
-    while (m_netsensor->subsession = it.next()) {
-        uint32_t videoType  = m_netsensor->subsession->attrVal_unsigned("type");
-        uint32_t videoIndex = m_netsensor->subsession->attrVal_unsigned("index");
-    std::cout << "Checking for " << m_netsensor->subsession->videoWidth() << "x" << m_netsensor->subsession->videoHeight() << "x" << m_netsensor->subsession->videoFPS() << ", type " << videoType << ", index " << videoIndex << std::endl;
-        if ((m_netsensor->subsession->videoWidth()  == stream.width())  &&
-            (m_netsensor->subsession->videoHeight() == stream.height()) &&
-            (m_netsensor->subsession->videoFPS()    == stream.fps())    &&
-            (videoType == stream.stream_type()) && 
-            (videoIndex == stream.stream_index()))
-        {
-            std::cout << "Profile match for " << m_netsensor->subsession->controlPath() << std::endl;
-            profile_found = true;
+        std::cout << " Stream : " << std::setw(15) << rs2_stream_to_string(stream.stream_type()) 
+                                    << std::setw(15) << rs2_format_to_string(stream.format())      
+                                    << std::setw(15) << stream.width() << "x" << stream.height() << "x" << stream.fps() << std::endl;
 
-            int useSpecialRTPoffset = -1; // for supported codecs
-            if (strcmp(m_netsensor->subsession->codecName(), "LZ4") == 0) {
-                useSpecialRTPoffset = 0;
-            }
+        bool profile_found = false;
 
-            if (!m_netsensor->subsession->initiate(useSpecialRTPoffset)) {
-                std::cout << "Failed to initiate the \"" << m_netsensor->subsession->controlPath() << "\" subsession: " << envir().getResultMsg() << "\n";
-            } else {
-                std::cout << "Initiated the '" << std::setw(10) << m_netsensor->subsession->controlPath() << "' " 
-                                               << m_netsensor->subsession->mediumName()   << "/" 
-                                               << m_netsensor->subsession->protocolName() << "/" 
-                                               << m_netsensor->subsession->videoWidth() << "x" << m_netsensor->subsession->videoHeight() << "x" << m_netsensor->subsession->videoFPS() << " subsession (";
-                if (m_netsensor->subsession->rtcpIsMuxed()) {
-                    std::cout << "client port " << m_netsensor->subsession->clientPortNum();
-                } else {
-                    std::cout << "client ports " << m_netsensor->subsession->clientPortNum() << "-" << m_netsensor->subsession->clientPortNum() + 1;
+        // Then, create and set up our data source objects for the session.  We do this by iterating over the session's 'subsessions',
+        // calling "MediaSubsession::initiate()", and then sending a RTSP "SETUP" command, on each one.
+        // (Each 'subsession' will have its own data source.)
+        MediaSubsessionIterator it(*m_session);
+
+        uint32_t stype = stream.stream_type();
+        std::cout << "Looking  for " << stream.width() << "x" << stream.height() << "x" << stream.fps() << ", type " << stype << ", index " << stream.stream_index() << std::endl;
+        while (m_subsession = it.next()) {
+            uint32_t videoType  = m_subsession->attrVal_unsigned("type");
+            uint32_t videoIndex = m_subsession->attrVal_unsigned("index");
+            std::cout << "Checking for " << m_subsession->videoWidth() << "x" << m_subsession->videoHeight() << "x" << m_subsession->videoFPS() << ", type " << videoType << ", index " << videoIndex << std::endl;
+            if ((m_subsession->videoWidth()  == stream.width())  &&
+                (m_subsession->videoHeight() == stream.height()) &&
+                (m_subsession->videoFPS()    == stream.fps())    &&
+                (videoType == stream.stream_type()) && 
+                (videoIndex == stream.stream_index()))
+            {
+                std::cout << "Profile match for " << m_subsession->controlPath() << std::endl;
+                profile_found = true;
+
+                int useSpecialRTPoffset = -1; // for supported codecs
+                if (strcmp(m_subsession->codecName(), "LZ4") == 0) {
+                    useSpecialRTPoffset = 0;
                 }
-                std::cout << ") [" << m_netsensor->subsession->readSource()->name() << " : " << m_netsensor->subsession->readSource()->MIMEtype() << "]\n";
 
-#if 0
-#  define ENCODER_LZ4
+                if (!m_subsession->initiate(useSpecialRTPoffset)) {
+                    std::cout << "Failed to initiate the \"" << m_subsession->controlPath() << "\" subsession: " << envir().getResultMsg() << "\n";
+                } else {
+                    std::cout << "Initiated the '" << std::setw(10) << m_subsession->controlPath() << "' " 
+                                                << m_subsession->mediumName()   << "/" 
+                                                << m_subsession->protocolName() << "/" 
+                                                << m_subsession->videoWidth() << "x" << m_subsession->videoHeight() << "x" << m_subsession->videoFPS() << " subsession (";
+                    if (m_subsession->rtcpIsMuxed()) {
+                        std::cout << "client port " << m_subsession->clientPortNum();
+                    } else {
+                        std::cout << "client ports " << m_subsession->clientPortNum() << "-" << m_subsession->clientPortNum() + 1;
+                    }
+                    std::cout << ") [" << m_subsession->readSource()->name() << " : " << m_subsession->readSource()->MIMEtype() << "]\n";
 
-#  if   defined(ENCODER_JPEG) // JPEG filter 
-                FramedFilter* jpeg = JPEGDecodeFilter::createNew(envir(), m_scs.subsession->readSource());
-                m_scs.subsession->addFilter(jpeg);
-                std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
-#  elif defined(ENCODER_JPEG2000) // JPEG2000 filter 
-                FramedFilter* jpeg2000 = JPEG2000DecodeFilter::createNew(envir(), m_scs.subsession->readSource());
-                m_scs.subsession->addFilter(jpeg2000);
-                std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
-#  elif defined(ENCODER_LZ4) // LZ4 filter 
-                FramedFilter* lz4 = LZ4DecodeFilter::createNew(envir(), m_scs.subsession->readSource());
-                m_scs.subsession->addFilter(lz4);
-                std::cout << "Set filter [" << m_scs.subsession->readSource()->name() << "]\n";
-#  endif
-#endif
+                    // Continue setting up this subsession, by sending a RTSP "SETUP" command:
+                    sendSetupCommand(*m_subsession, RSRTSPClient::continueAfterSETUP);
 
-                // Continue setting up this subsession, by sending a RTSP "SETUP" command:
-                sendSetupCommand(*m_netsensor->subsession, RSRTSPClient::continueAfterSETUP);
-                break;
+                    // RSSink* sink = RSSink::createNew(envir(), *m_subsession, url(), m_subsession->videoWidth() * m_subsession->videoHeight() * m_subsession->videoFPS());
+                    // m_subsession->sink = sink;
+                    // return sink;
+
+                    return;
+                }
             }
         }
+        if (!profile_found) envir() << "Cannot match a profile\n";
     }
 
-    if (!profile_found) envir() << "Cannot match a profile\n";
+    delete m_pqm_it;
+    m_pqm_it = NULL;
+
+    sendPlayCommand(*m_session, continueAfterPLAY);
 }
 
 // static callback
@@ -618,56 +529,40 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
     // Having successfully setup the subsession, create a data sink for it, and call "startPlaying()" on it.
     // (This will prepare the data sink to receive data; the actual flow of data from the client won't start happening until later,
     // after we've sent a RTSP "PLAY" command.)
-    RSSink* sink = RSSink::createNew(env, *m_netsensor->subsession, url(), m_netsensor->subsession->videoWidth() * m_netsensor->subsession->videoHeight() * m_netsensor->subsession->videoFPS());
-
-    rs2_video_stream stream = {
-        (rs2_stream)m_netsensor->subsession->attrVal_unsigned("type"),
-        m_netsensor->subsession->attrVal_unsigned("index"),
-        0,
-        m_netsensor->subsession->videoWidth(),
-        m_netsensor->subsession->videoHeight(),
-        m_netsensor->subsession->videoFPS(),
-        m_netsensor->subsession->attrVal_unsigned("bpp"),
-        (rs2_format)m_netsensor->subsession->attrVal_unsigned("format"),
-        m_parent.intrinsics
-    };
-
-    sink->profile = m_parent.get_profile(stream);
-
-    m_netsensor->subsession->sink = sink;
+    m_subsession->sink = RSSink::createNew(env, *m_subsession, url(), (*m_pqm_it)->second, m_subsession->videoWidth() * m_subsession->videoHeight() * m_subsession->videoFPS());
 
     // do not wait for the out of order packets
     // m_scs.subsession->rtpSource()->setPacketReorderingThresholdTime(0); 
 
     // perhaps use your own custom "MediaSink" subclass instead
-    if(m_netsensor->subsession->sink == NULL)
+    if(m_subsession->sink == NULL)
     {
-        env << "Failed to create a data sink for the '" << m_netsensor->subsession->controlPath() << "' subsession: " << env.getResultMsg() << "\n";
+        env << "Failed to create a data sink for the '" << m_subsession->controlPath() << "' subsession: " << env.getResultMsg() << "\n";
     }
     else
     {
-        env << "Created a data sink for the \"" << m_netsensor->subsession->controlPath() << "\" subsession\n";
-        m_netsensor->subsession->miscPtr = this; // a hack to let subsession handler functions get the "RTSPClient" from the subsession
-        m_netsensor->subsession->sink->startPlaying(*(m_netsensor->subsession->readSource()), subsessionAfterPlaying, m_netsensor->subsession);
+        env << "Created a data sink for the \"" << m_subsession->controlPath() << "\" subsession\n";
+        m_subsession->miscPtr = this; // a hack to let subsession handler functions get the "RTSPClient" from the subsession
+        m_subsession->sink->startPlaying(*(m_subsession->readSource()), subsessionAfterPlaying, m_subsession);
         // Also set a handler to be called if a RTCP "BYE" arrives for this subsession:
-        if(m_netsensor->subsession->rtcpInstance() != NULL)
+        if(m_subsession->rtcpInstance() != NULL)
         {
-            m_netsensor->subsession->rtcpInstance()->setByeWithReasonHandler(subsessionByeHandler, m_netsensor->subsession);
-        }
-
-        // We've finished setting up all of the subsessions.  Now, send a RTSP "PLAY" command to start the streaming:
-        if(m_netsensor->session->absStartTime() != NULL)
-        {
-            // Special case: The stream is indexed by 'absolute' time, so send an appropriate "PLAY" command:
-            sendPlayCommand(*m_netsensor->session, continueAfterPLAY, m_netsensor->session->absStartTime(), m_netsensor->session->absEndTime());
-        }
-        else
-        {
-            m_netsensor->duration = m_netsensor->session->playEndTime() - m_netsensor->session->playStartTime();
-            sendPlayCommand(*m_netsensor->session, continueAfterPLAY);
+            m_subsession->rtcpInstance()->setByeWithReasonHandler(subsessionByeHandler, m_subsession);
         }
 
     }
+
+    // setup the remainded streams
+    (*m_pqm_it)++;
+    playSession();
+}
+
+void RSRTSPClient::playStreams(ProfileQMap pqm) 
+{
+    m_pqm = pqm;
+
+    sendDescribeCommand(RSRTSPClient::continueAfterDESCRIBE);
+    // TODO: pair stream with the queue
 }
 
 // static callback
@@ -679,61 +574,26 @@ void RSRTSPClient::continueAfterPLAY(RTSPClient* rtspClient, int resultCode, cha
 // member
 void RSRTSPClient::continueAfterPLAY(int resultCode, char* resultString)
 {
-    Boolean success = False;
+    UsageEnvironment& env = envir(); // alias
 
-    do
-    {
-        UsageEnvironment& env = envir(); // alias
+    if(resultCode != 0) {
+        env << "Failed to start playing session: " << resultString << "\n";
 
-        if(resultCode != 0)
-        {
-            env << "Failed to start playing session: " << resultString << "\n";
-            break;
-        }
-
-        // Set a timer to be handled at the end of the stream's expected duration (if the stream does not already signal its end
-        // using a RTCP "BYE").  This is optional.  If, instead, you want to keep the stream active - e.g., so you can later
-        // 'seek' back within it and do another RTSP "PLAY" - then you can omit this code.
-        // (Alternatively, if you don't want to receive the entire stream, you could set this timer for some shorter value.)
-        if(m_netsensor->duration > 0)
-        {
-            unsigned const delaySlop = 2; // number of seconds extra to delay, after the stream's expected duration.  (This is optional.)
-            m_netsensor->duration += delaySlop;
-            unsigned uSecsToDelay = (unsigned)(m_netsensor->duration * 1000000);
-            m_netsensor->streamTimerTask = env.taskScheduler().scheduleDelayedTask(uSecsToDelay, (TaskFunc*)RSRTSPClient::streamTimerHandler, this);
-        }
-
-        env << "Started playing session";
-        if(m_netsensor->duration > 0)
-        {
-            env << " (for up to " << m_netsensor->duration << " seconds)";
-        }
-        env << "...\n";
-
-        success = True;
-    } while(0);
-    delete[] resultString;
-
-    if(!success)
-    {
         // An unrecoverable error occurred with this stream.
         shutdownStream();
+    } else {
+        env << "Started playing session...\n";
     }
+
+    delete[] resultString;
 }
-
-void RSRTSPClient::streamTimerHandler(void* clientData)
-{
-    RSRTSPClient* rtspClient = (RSRTSPClient*)clientData;
-
-    rtspClient->m_netsensor->streamTimerTask = NULL;
-    rtspClient->shutdownStream();
-}
-
 
 void RSRTSPClient::subsessionAfterPlaying(void* clientData)
 {
     MediaSubsession* subsession = (MediaSubsession*)clientData;
     RSRTSPClient* rtspClient = (RSRTSPClient*)(subsession->miscPtr);
+
+    std::cout << "Closing " << subsession->controlPath() << "session" << std::endl;
 
     // Begin by closing this subsession's stream:
     Medium::close(subsession->sink);
@@ -774,13 +634,13 @@ void RSRTSPClient::subsessionByeHandler(void* clientData, char const* reason)
 // #define RS_SINK_RECEIVE_BUFFER_SIZE 1048576
 #define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_SIZE + CHUNK_HLEN)
 
-RSSink* RSSink::createNew(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, uint32_t threshold)
+RSSink* RSSink::createNew(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, SafeQueue* q, uint32_t threshold)
 {
-    return new RSSink(env, subsession, streamId, threshold);
+    return new RSSink(env, subsession, streamId, q, threshold);
 }
 
-RSSink::RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, uint32_t threshold)
-    : MediaSink(env), fSubsession(subsession), m_threshold(threshold)
+RSSink::RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, SafeQueue* q, uint32_t threshold)
+    : MediaSink(env), fSubsession(subsession), m_threshold(threshold), m_frames(q)
 {
     fStreamId = strDup(streamId);
     fReceiveBuffer = new u_int8_t[RS_SINK_RECEIVE_BUFFER_SIZE];
@@ -790,11 +650,11 @@ RSSink::RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* s
 RSSink::~RSSink()
 {
     if (fReceiveBuffer) delete[] fReceiveBuffer;
-    std::lock_guard<std::mutex> lck (m_frames_mutex);
-    while (!m_frames.empty()) {
-        delete[] m_frames.front();
-        m_frames.pop();
-    }
+    // std::lock_guard<std::mutex> lck (m_frames_mutex);
+    // while (!m_frames.empty()) {
+    //     delete[] m_frames.front();
+    //     m_frames.pop();
+    // }
     delete[] fStreamId;
 }
 
@@ -817,7 +677,7 @@ void RSSink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, s
         //         m_frames.pop();
         //     }
         // }
-        m_frames.push(fReceiveBuffer);
+        m_frames->push(fReceiveBuffer);
         fReceiveBuffer = new u_int8_t[RS_SINK_RECEIVE_BUFFER_SIZE];
         chunks_allocated++;
     }
@@ -843,16 +703,16 @@ Boolean RSSink::continuePlaying()
     return True;
 }
 
-uint8_t* RSSink::getFrame() {
-    if (m_frames.empty()) return NULL;
-    std::lock_guard<std::mutex> lck (m_frames_mutex);
-    return m_frames.front();;
-}
+// uint8_t* RSSink::getFrame() {
+//     if (m_frames.empty()) return NULL;
+//     std::lock_guard<std::mutex> lck (m_frames_mutex);
+//     return m_frames.front();;
+// }
 
-void RSSink::popFrame() {
-    if (m_frames.empty()) return;
-    std::lock_guard<std::mutex> lck (m_frames_mutex);
-    m_frames.pop();
-    chunks_allocated--;
-}
+// void RSSink::popFrame() {
+//     if (m_frames.empty()) return;
+//     std::lock_guard<std::mutex> lck (m_frames_mutex);
+//     m_frames.pop();
+//     chunks_allocated--;
+// }
 

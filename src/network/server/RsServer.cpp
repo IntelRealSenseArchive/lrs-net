@@ -4,6 +4,8 @@
 
 #include <iostream>
 #include <queue>
+#include <thread>
+#include <functional>
 
 #include <liveMedia.hh>
 #include <GroupsockHelper.hh>
@@ -18,10 +20,26 @@
 #include "tclap/CmdLine.h"
 #include "tclap/ValueArg.h"
 
+#include "httplib.h"
+
 using namespace TCLAP;
+
+void server::doHTTP() {
+    std::cout << "Internal HTTP server started." << std::endl;
+
+    httplib::Server svr;
+
+    svr.Get("/query", [&](const httplib::Request &, httplib::Response &res) {
+        res.set_content(m_sdsc, "text/plain");
+    });
+
+    svr.listen("0.0.0.0", 8080);
+}
 
 server::server(rs2::device dev, std::string addr, int port)
 {
+    m_httpd  = std::thread( [this](){ doHTTP(); } ); 
+
     m_serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
     m_name   = dev.get_info(RS2_CAMERA_INFO_NAME);
 
@@ -39,7 +57,7 @@ server::server(rs2::device dev, std::string addr, int port)
         exit(1);
     }
 
-    ServerMediaSession* sms = ServerMediaSession::createNew(*env, "", m_name.c_str(), "Session streamed by LRS-Net");
+    // ServerMediaSession* sms = ServerMediaSession::createNew(*env, "", m_name.c_str(), "Session streamed by LRS-Net");
     for (rs2::sensor sensor : dev.query_sensors()) {
         std::string sensor_name(sensor.supports(RS2_CAMERA_INFO_NAME) ? sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
 
@@ -52,8 +70,10 @@ server::server(rs2::device dev, std::string addr, int port)
         std::cout << std::endl;
 
         // std::string sensor_path = m_serial + "/" + sensor_name;
-        // ServerMediaSession* sms = ServerMediaSession::createNew(*env, sensor_path.c_str(), sensor_name.c_str(), "Session streamed by LRS-Net");
+        std::string sensor_path = sensor_name;
+        ServerMediaSession* sms = ServerMediaSession::createNew(*env, sensor_path.c_str(), sensor_name.c_str(), "Session streamed by LRS-Net");
 
+        std::string stream_keys;
         for (auto stream_profile : sensor.get_stream_profiles()) {
             rs2::video_stream_profile stream = static_cast<rs2::video_stream_profile>(stream_profile);
             
@@ -69,6 +89,14 @@ server::server(rs2::device dev, std::string addr, int port)
                         sms->addSubsession(RsServerMediaSubsession::createNew(*env, psq));
                         // supported_stream_profiles.push_back(stream);
                         std::cout << "ACCEPTED" << std::endl;
+                        uint64_t stream_key = 
+                            ((uint64_t)stream.stream_type()  & 0x00FF) << 56 | 
+                            ((uint64_t)stream.stream_index() & 0x00FF) << 48 | 
+                            ((uint64_t)stream.width()        & 0xFFFF) << 32 | 
+                            ((uint64_t)stream.height()       & 0xFFFF) << 16 | 
+                            ((uint64_t)stream.fps()          & 0x00FF) <<  8 | 
+                            ((uint64_t)stream.format()       & 0x00FF); 
+                        stream_keys += "|" + std::to_string(stream_key);
                         continue;
                     }
                 }
@@ -76,18 +104,22 @@ server::server(rs2::device dev, std::string addr, int port)
             std::cout << "ignored" << std::endl;
         }
 
-        // srv->addServerMediaSession(sms);
-        // char* url = srv->rtspURL(sms); // should be deallocated later
-        // std::cout << "Access\t: " << url << std::endl << std::endl;
+        srv->addServerMediaSession(sms);
+        char* url = srv->rtspURL(sms); // should be deallocated later
+        std::cout << "Access\t: " << url << std::endl << std::endl;
 
-        // delete[] url;
+        if (stream_keys.size()) m_sdsc += sensor_name + "|" + url + stream_keys + "\r\n";
+
+        delete[] url;
     }
 
-    srv->addServerMediaSession(sms);
-    char* url = srv->rtspURL(sms); // should be deallocated later
-    std::cout << "Access\t: " << url << std::endl << std::endl;
+    // srv->addServerMediaSession(sms);
+    // char* url = srv->rtspURL(sms); // should be deallocated later
+    // std::cout << "Access\t: " << url << std::endl << std::endl;
 
-    delete[] url;
+    // delete[] url;
+
+    std::cout << m_sdsc;
 }
 
 void server::start()

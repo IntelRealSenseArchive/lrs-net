@@ -30,12 +30,12 @@ protected:
     RsServerMediaSubsession(UsageEnvironment& t_env, frames_queue* psq) : OnDemandServerMediaSubsession(t_env, false), m_queue(psq) {};
     virtual ~RsServerMediaSubsession() {};
 
-    virtual char const* sdpLines() {
-        // regenerate SDP description to get actual subsession state
-        if(fSDPLines != NULL) delete [] fSDPLines;
-        fSDPLines = NULL;
-        return OnDemandServerMediaSubsession::sdpLines();
-    };
+    // virtual char const* sdpLines() {
+    //     // regenerate SDP description to get actual subsession state
+    //     if(fSDPLines != NULL) delete [] fSDPLines;
+    //     fSDPLines = NULL;
+    //     return OnDemandServerMediaSubsession::sdpLines();
+    // };
 
     virtual char const* getAuxSDPLine(RTPSink* rtpSink, FramedSource* inputSource) {
         static char* privateAuxSDPLine = {0};

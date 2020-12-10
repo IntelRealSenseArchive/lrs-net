@@ -25,7 +25,7 @@ private:
 
 protected:
     char const* allowedCommandNames() {
-        return "OPTIONS, DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE, GET_PARAMETER, SET_PARAMETER, LIST, CAPABILITIES, GET_OPTION, SET_OPTION";
+        return "OPTIONS, DESCRIBE, SETUP, TEARDOWN, PLAY, PAUSE, GET_PARAMETER, SET_PARAMETER, LIST, QUERY, GET_OPTION, SET_OPTION";
     };
 
 public:
@@ -42,6 +42,11 @@ public:
             std::cout << "Bad command" << "\n";
             RTSPServer::RTSPClientConnection::handleCmd_bad();
         };
+
+        virtual void handleHTTPCmd_StreamingGET(char const* urlSuffix, char const* fullRequestStr) {
+            std::cout << "GET request for " << urlSuffix << " : " << fullRequestStr << std::endl;
+            RTSPServer::RTSPClientConnection::handleHTTPCmd_StreamingGET(urlSuffix, (char const*)fRequestBuffer);
+        }
 
         virtual void handleCmd_notSupported() {
             // Parse the request string into command name and 'CSeq', then handle the command:
@@ -81,14 +86,29 @@ public:
                         fCurrentCSeq,
                         dateHeader(),
                 //      fOurRTSPServer.rtspURL(session, fClientInputSocket),
-                        m_parent.m_serials.length(),
-                        m_parent.m_serials.c_str());
+                        m_parent.m_list.length(),
+                        m_parent.m_list.c_str());
 
                 //     session->decrementReferenceCount();
                 //     if(session->referenceCount() == 0 && session->deleteWhenUnreferenced()) {
                 //         fOurServer.removeServerMediaSession(session);
                 //     }
                 // }
+            // } else if (strcmp(cmdName, "QUERY") == 0) {
+            //         snprintf((char*)fResponseBuffer,
+            //             sizeof fResponseBuffer,
+            //             "RTSP/1.0 200 OK\r\nCSeq: %s\r\n"
+            //             "%s"
+            //     //      "Content-Base: %s/\r\n"
+            //             "Content-Type: text/plain\r\n"
+            //             "Content-Length: %lu\r\n\r\n"
+            //             "%s",
+            //             fCurrentCSeq,
+            //             dateHeader(),
+            //     //      fOurRTSPServer.rtspURL(session, fClientInputSocket),
+            //             m_parent.m_sdsc.length(),
+            //             m_parent.m_sdsc.c_str());
+
             } else {
                 RTSPServer::RTSPClientConnection::handleCmd_notSupported();
             }
@@ -110,7 +130,7 @@ protected: // redefined virtual functions
     }
 
 private:
-    std::string m_serials;
+    std::string m_list; // cameras served by server
 };
 
 class server
@@ -133,4 +153,9 @@ private:
     unsigned int port;
     std::string m_serial;
     std::string m_name;
+
+    std::thread m_httpd;
+    void doHTTP();
+
+    std::string m_sdsc; // sensors description
 };
