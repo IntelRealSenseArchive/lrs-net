@@ -55,18 +55,19 @@ public:
     };
 
     uint8_t* front() {
-        if (q.empty()) return NULL;
         std::lock_guard<std::mutex> lck (m);
+        if (q.empty()) return NULL;
         return q.front();
     };
 
     void pop() {
-        if (q.empty()) return;
         std::lock_guard<std::mutex> lck (m);
+        if (q.empty()) return;
         return q.pop();
     };
 
     bool empty() {
+        std::lock_guard<std::mutex> lck (m);
         return q.empty(); 
     };
 
@@ -80,17 +81,13 @@ using StreamProfile   = std::shared_ptr<rs2::video_stream_profile>;
 using ProfileQPair    = std::pair<rs2::stream_profile, SafeQueue*>;
 using ProfileQMap     = std::map<rs2::stream_profile, SafeQueue*>;
 
-class RSSink : public MediaSink
-{
+class RSSink : public MediaSink {
 public:
     static RSSink* createNew(UsageEnvironment& env,
                                 MediaSubsession& subsession, // identifies the kind of data that's being received
                                 char const* streamId,        // identifies the stream itself
                                 SafeQueue* q,
                                 uint32_t threshold);         // number of stored bytes for the drop
-
-    // uint8_t* getFrame();
-    // void     popFrame();
 
 private:
     RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* streamIdm, SafeQueue* q, uint32_t threshold); // called only by "createNew()"
@@ -110,7 +107,6 @@ private:
 
     uint8_t* fReceiveBuffer;
     
-    std::mutex m_frames_mutex;
     SafeQueue* m_frames;
     
     MediaSubsession& fSubsession;
@@ -135,7 +131,6 @@ public:
     void set_mrl(std::string mrl) { m_mrl  = mrl; };
     void add_profile(rs2_video_stream stream) { 
         StreamProfile sp = std::make_shared<rs2::video_stream_profile>(m_sw_sensor->add_video_stream(stream, false));
-        // m_stream_profiles.emplace(ProfileSinkPair(sp, NULL));
     };
 
     bool is_streaming() { return m_sw_sensor->get_active_streams().size() > 0; };
@@ -143,14 +138,11 @@ public:
     void start() {
         m_rtp = std::thread( [&](){ doRTP(); });
         std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
-        // m_ctl = std::thread( [&](){ doControl(); });
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
         m_dev = std::thread( [&](){ doDevice(); });
         std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
     };
 
     void doRTP();
-    // void doControl();
     static void doControl(void* clientData) {
         rs_net_sensor* sensor = (rs_net_sensor*)clientData;
         sensor->doControl(); 
@@ -167,11 +159,9 @@ private:
     std::string    m_mrl;
 
     SoftSensor     m_sw_sensor;
-    // ProfileSinkMap m_stream_profiles;
     ProfileQMap    m_stream_q;
 
     std::thread    m_rtp;
-    std::thread    m_ctl;
     std::thread    m_dev;
 
     RSRTSPClient*  m_rtspClient;
@@ -183,11 +173,10 @@ private:
 
     UsageEnvironment* m_env;
 };
+using NetSensor = std::shared_ptr<rs_net_sensor>;
 
-using NetSensor      = std::shared_ptr<rs_net_sensor>;
-
-#define COMPRESSION_ENABLED
-#define COMPRESSION_ZSTD
+// #define COMPRESSION_ENABLED
+// #define COMPRESSION_ZSTD
 
 #define CHUNK_SIZE (1024*2)
 #pragma pack (push, 1)
@@ -231,8 +220,7 @@ public:
     };
 };
 
-class RSRTSPClient : public RTSPClient
-{
+class RSRTSPClient : public RTSPClient {
 public:
     static RSRTSPClient* createNew(UsageEnvironment& env, char const* rtspURL) {
         return new RSRTSPClient(env, rtspURL);
@@ -240,39 +228,15 @@ public:
 
 protected:
     RSRTSPClient(UsageEnvironment& env, char const* rtspURL)
-        : RTSPClient(env, rtspURL, 0, "", 0, -1), ready(false), m_stream_it(NULL), m_pqm_it(NULL) {}
+        : RTSPClient(env, rtspURL, 0, "", 0, -1), m_pqm_it(NULL) {}
 
     virtual ~RSRTSPClient() {};
 
-    virtual Boolean setRequestFields(RequestRecord* request,
-                    char*& cmdURL, Boolean& cmdURLWasAllocated,
-                    char const*& protocolStr,
-                    char*& extraHeaders, Boolean& extraHeadersWereAllocated) {
-        if (strcmp(request->commandName(), "LIST") == 0) {
-            // behave like an OPTIONS command without the session
-            extraHeaders = strDup("");
-            extraHeadersWereAllocated = True;
-            return True;
-        } else if (strcmp(request->commandName(), "QUERY") == 0) {
-            // behave like an OPTIONS command without the session
-            extraHeaders = strDup("");
-            extraHeadersWereAllocated = True;
-            return True;
-        } 
-
-        return RTSPClient::setRequestFields(request, cmdURL, cmdURLWasAllocated, protocolStr, extraHeaders, extraHeadersWereAllocated);
-    };
-
 public:
-    // RSSink* prepareStream(StreamProfile stream);
-
-    void prepareSession();
-    void prepareStream(StreamProfile stream);
-    // void playStreams(std::vector<rs2::stream_profile> streams);
     void playStreams(ProfileQMap pqm);
-
     void shutdownStream();
 
+    void prepareSession();
     void playSession();
 
     static void continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultString); // callback
@@ -288,11 +252,6 @@ public:
     static void subsessionByeHandler(void* clientData, char const* reason);
     static void streamTimerHandler(void* clientData);
 
-    RSSink* get_sink() { return (RSSink*)m_subsession->sink; };
-
-    bool m_readyToPlay;
-    bool ready;
-
 private:
     RsMediaSession*  m_session;
     MediaSubsession* m_subsession;
@@ -301,17 +260,13 @@ private:
 
     ProfileQMap m_pqm;
     ProfileQMap::iterator* m_pqm_it;
-
-    std::vector<rs2::stream_profile> m_streams;
-    std::vector<rs2::stream_profile>::iterator* m_stream_it;    
-
 };
 
 class rs_net_device
 {
 public:
     rs_net_device(rs2::software_device sw_device, std::string ip_address);
-   ~rs_net_device();
+   ~rs_net_device() {};
 
     rs2_intrinsics intrinsics;
 

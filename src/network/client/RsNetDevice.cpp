@@ -115,25 +115,13 @@ void RsMediaSubsessionIterator::reset() {
 void rs_net_sensor::doRTP() {
     std::cout << "RTP support thread started for " << m_name << " sensor" << std::endl;
 
-    // Start the RTSP client
     TaskScheduler* scheduler = BasicTaskScheduler::createNew(/* 1000 */); // Check this later
     m_env = BasicUsageEnvironment::createNew(*scheduler);
 
-    // RTSPClient::responseBufferSize = 100000;
-    // m_rtspClient = RSRTSPClient::createNew(*env, m_mrl.c_str());
-
-    // if(m_rtspClient == NULL)
-    // {
-    //     std::cout << "Failed to create a RTSP client for URL \"" << m_mrl << "\": " << env->getResultMsg() << "\n";
-    //     throw std::runtime_error("Cannot create RTSP client");
-    // }
-
-    // std::cout << "Connected to " << m_mrl << std::endl;
-
+    // Start the watch thread  
     m_env->taskScheduler().scheduleDelayedTask(100000, doControl, this);
 
-    // m_rtspClient->sendDescribeCommand(RSRTSPClient::continueAfterDESCRIBE);
-
+    // Start the scheduler
     m_env->taskScheduler().doEventLoop(&m_eventLoopWatchVariable);
 }
 
@@ -145,26 +133,23 @@ void rs_net_sensor::doControl() {
         if (is_streaming()) {
             std::cout << "Sensor enabled\n";
 
+            // Create RTSP client
             RTSPClient::responseBufferSize = 100000;
             m_rtspClient = RSRTSPClient::createNew(*m_env, m_mrl.c_str());
-
-            if(m_rtspClient == NULL)
-            {
+            if (m_rtspClient == NULL) {
                 std::cout << "Failed to create a RTSP client for URL \"" << m_mrl << "\": " << m_env->getResultMsg() << "\n";
                 throw std::runtime_error("Cannot create RTSP client");
             }
-
             std::cout << "Connected to " << m_mrl << std::endl;
 
+            // Prepare profiles list and allocate the queues
             for (auto stream : m_sw_sensor->get_active_streams()) {
                 ProfileQPair pq(stream, new SafeQueue);
                 m_stream_q.insert(pq);
             }
             
+            // Start playing streams
             m_rtspClient->playStreams(m_stream_q);
-
-            //         m_stream_profiles[s] = m_rtspClient->get_sink();
-            //         std::cout << "Sink assigned for " << m_name << std::endl;
         } else {
             std::cout << "Sensor disabled\n";
             // disable running RTP sessions
@@ -200,9 +185,7 @@ void rs_net_sensor::doDevice() {
 
     while (m_eventLoopWatchVariable == 0) {
         if (is_streaming())  {
-            // for (ProfileSinkPair psp : m_stream_profiles) {
-            for (ProfileQPair pqp : m_stream_q) {
-                
+            for (ProfileQPair pqp : m_stream_q) {                
                 if (pqp.second->empty()) continue;
 
                 auto start = std::chrono::system_clock::now();
@@ -293,7 +276,7 @@ void rs_net_sensor::doDevice() {
 }
 
 rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_address)
-    :m_device(sw_device) // , m_eventLoopWatchVariable(0), m_rtspClient(0)
+    : m_device(sw_device)
 {
     // parse the parameters and set address and port
     int colon = ip_address.find(":");
@@ -329,6 +312,7 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
             std::string sensor_name = sensor.substr(0, pos);
             sensor.erase(0, pos + 1);
 
+            // TODO: move the following code to the NetSensor's constructor
             NetSensor netsensor(new rs_net_sensor(m_device, sensor_name));
 
             // get the sensor MRL
@@ -356,14 +340,7 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
     for (auto netsensor : sensors) netsensor->start();
 }
 
-rs_net_device::~rs_net_device() 
-{
-}
-
-void RSRTSPClient::shutdownStream()
-{
-    UsageEnvironment& env = envir(); // alias
-
+void RSRTSPClient::shutdownStream() {
     // First, check whether any subsessions have still to be closed:
     if (m_session != NULL) {
         Boolean someSubsessionsWereActive = False;
@@ -392,20 +369,17 @@ void RSRTSPClient::shutdownStream()
     }
 
     std::cout << "Closing the stream.\n";
-    // Do not shutdown the RTSP client
     Medium::close(this);
 }
 
 // static callback
-void RSRTSPClient::continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultString)
-{
+void RSRTSPClient::continueAfterDESCRIBE(RTSPClient* rtspClient, int resultCode, char* resultString) {
     return ((RSRTSPClient*)rtspClient)->continueAfterDESCRIBE(resultCode, resultString);
 }
 
 // member
-void RSRTSPClient::continueAfterDESCRIBE(int resultCode, char* resultString)
-{
-    if(resultCode != 0) {
+void RSRTSPClient::continueAfterDESCRIBE(int resultCode, char* resultString) {
+    if (resultCode != 0) {
         std::cout << "Failed to get a SDP description: " << resultString << "\n";
         delete[] resultString;
         throw std::runtime_error("Failed to get a SDP description");
@@ -433,7 +407,6 @@ void RSRTSPClient::prepareSession() {
         throw std::runtime_error("No profiles found");
     } else {
         std::cout << "Session created " << m_session->name() << "/" << m_session->sessionDescription() << "/" << m_session->controlPath() << "\n";
-        ready = true;
         return;
     }
 
@@ -443,12 +416,10 @@ void RSRTSPClient::prepareSession() {
 
 void RSRTSPClient::playSession() {
     // setup streams first
-    // if (m_stream_it == NULL) m_stream_it = new std::vector<rs2::stream_profile>::iterator(m_streams.begin());
     if (m_pqm_it == NULL) m_pqm_it = new ProfileQMap::iterator(m_pqm.begin());
 
     while (*m_pqm_it != m_pqm.end()) {
         rs2::video_stream_profile stream = (*m_pqm_it)->first.as<rs2::video_stream_profile>();
-        // (*m_stream_it)++;
 
         std::cout << " Stream : " << std::setw(15) << rs2_stream_to_string(stream.stream_type()) 
                                     << std::setw(15) << rs2_format_to_string(stream.format())      
@@ -456,11 +427,7 @@ void RSRTSPClient::playSession() {
 
         bool profile_found = false;
 
-        // Then, create and set up our data source objects for the session.  We do this by iterating over the session's 'subsessions',
-        // calling "MediaSubsession::initiate()", and then sending a RTSP "SETUP" command, on each one.
-        // (Each 'subsession' will have its own data source.)
         MediaSubsessionIterator it(*m_session);
-
         uint32_t stype = stream.stream_type();
         std::cout << "Looking  for " << stream.width() << "x" << stream.height() << "x" << stream.fps() << ", type " << stype << ", index " << stream.stream_index() << std::endl;
         while (m_subsession = it.next()) {
@@ -497,11 +464,6 @@ void RSRTSPClient::playSession() {
 
                     // Continue setting up this subsession, by sending a RTSP "SETUP" command:
                     sendSetupCommand(*m_subsession, RSRTSPClient::continueAfterSETUP);
-
-                    // RSSink* sink = RSSink::createNew(envir(), *m_subsession, url(), m_subsession->videoWidth() * m_subsession->videoHeight() * m_subsession->videoFPS());
-                    // m_subsession->sink = sink;
-                    // return sink;
-
                     return;
                 }
             }
@@ -516,8 +478,7 @@ void RSRTSPClient::playSession() {
 }
 
 // static callback
-void RSRTSPClient::continueAfterSETUP(RTSPClient* rtspClient, int resultCode, char* resultString)
-{
+void RSRTSPClient::continueAfterSETUP(RTSPClient* rtspClient, int resultCode, char* resultString) {
     return ((RSRTSPClient*)rtspClient)->continueAfterSETUP(resultCode, resultString);
 }
 
@@ -534,22 +495,16 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
     // do not wait for the out of order packets
     // m_scs.subsession->rtpSource()->setPacketReorderingThresholdTime(0); 
 
-    // perhaps use your own custom "MediaSink" subclass instead
-    if(m_subsession->sink == NULL)
-    {
+    if (m_subsession->sink == NULL) {
         env << "Failed to create a data sink for the '" << m_subsession->controlPath() << "' subsession: " << env.getResultMsg() << "\n";
-    }
-    else
-    {
+    } else {
         env << "Created a data sink for the \"" << m_subsession->controlPath() << "\" subsession\n";
         m_subsession->miscPtr = this; // a hack to let subsession handler functions get the "RTSPClient" from the subsession
         m_subsession->sink->startPlaying(*(m_subsession->readSource()), subsessionAfterPlaying, m_subsession);
         // Also set a handler to be called if a RTCP "BYE" arrives for this subsession:
-        if(m_subsession->rtcpInstance() != NULL)
-        {
+        if (m_subsession->rtcpInstance() != NULL) {
             m_subsession->rtcpInstance()->setByeWithReasonHandler(subsessionByeHandler, m_subsession);
         }
-
     }
 
     // setup the remainded streams
@@ -557,26 +512,21 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
     playSession();
 }
 
-void RSRTSPClient::playStreams(ProfileQMap pqm) 
-{
+void RSRTSPClient::playStreams(ProfileQMap pqm) {
     m_pqm = pqm;
-
     sendDescribeCommand(RSRTSPClient::continueAfterDESCRIBE);
-    // TODO: pair stream with the queue
 }
 
 // static callback
-void RSRTSPClient::continueAfterPLAY(RTSPClient* rtspClient, int resultCode, char* resultString)
-{
+void RSRTSPClient::continueAfterPLAY(RTSPClient* rtspClient, int resultCode, char* resultString) {
     return ((RSRTSPClient*)rtspClient)->continueAfterPLAY(resultCode, resultString);
 }
 
 // member
-void RSRTSPClient::continueAfterPLAY(int resultCode, char* resultString)
-{
+void RSRTSPClient::continueAfterPLAY(int resultCode, char* resultString) {
     UsageEnvironment& env = envir(); // alias
 
-    if(resultCode != 0) {
+    if (resultCode != 0) {
         env << "Failed to start playing session: " << resultString << "\n";
 
         // An unrecoverable error occurred with this stream.
@@ -631,7 +581,6 @@ void RSRTSPClient::subsessionByeHandler(void* clientData, char const* reason)
 }
 
 // Implementation of "RSSink":
-// #define RS_SINK_RECEIVE_BUFFER_SIZE 1048576
 #define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_SIZE + CHUNK_HLEN)
 
 RSSink* RSSink::createNew(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, SafeQueue* q, uint32_t threshold)
@@ -650,11 +599,6 @@ RSSink::RSSink(UsageEnvironment& env, MediaSubsession& subsession, char const* s
 RSSink::~RSSink()
 {
     if (fReceiveBuffer) delete[] fReceiveBuffer;
-    // std::lock_guard<std::mutex> lck (m_frames_mutex);
-    // while (!m_frames.empty()) {
-    //     delete[] m_frames.front();
-    //     m_frames.pop();
-    // }
     delete[] fStreamId;
 }
 
@@ -668,7 +612,7 @@ void RSSink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, s
 {
     // introducing scope for the lock_guard
     { 
-        std::lock_guard<std::mutex> lck (m_frames_mutex);
+        // std::lock_guard<std::mutex> lck (m_frames_mutex);
         // if (m_threshold / CHUNK_SIZE < m_frames.size()) {
         //     std::cout << "Dropping " << m_frames.size() << " chunks" << std::endl;
         //     chunks_allocated -= m_frames.size();
@@ -683,36 +627,17 @@ void RSSink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, s
     }
  
     // Then continue, to request the next frame of data:
-
     continuePlaying();
-    // nextTask() = envir().taskScheduler().scheduleDelayedTask(10, (TaskFunc*)getNextFrame, this);
 }
 
 void RSSink::getNextFrame(RSSink* sink) {
-    //// std::cout << "RsDeviceSource::waitForFrame" << std::endl;
     sink->continuePlaying();
 };
 
-Boolean RSSink::continuePlaying()
-{
-    if(fSource == NULL)
-        return False; // sanity check (should not happen)
+Boolean RSSink::continuePlaying() {
+    if(fSource == NULL) return False; // sanity check (should not happen)
 
     // Request the next frame of data from our input source.  "afterGettingFrame()" will get called later, when it arrives:
     fSource->getNextFrame(fReceiveBuffer, RS_SINK_RECEIVE_BUFFER_SIZE, afterGettingFrame, this, onSourceClosure, this);
     return True;
 }
-
-// uint8_t* RSSink::getFrame() {
-//     if (m_frames.empty()) return NULL;
-//     std::lock_guard<std::mutex> lck (m_frames_mutex);
-//     return m_frames.front();;
-// }
-
-// void RSSink::popFrame() {
-//     if (m_frames.empty()) return;
-//     std::lock_guard<std::mutex> lck (m_frames_mutex);
-//     m_frames.pop();
-//     chunks_allocated--;
-// }
-
