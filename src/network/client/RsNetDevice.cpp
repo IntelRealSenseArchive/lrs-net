@@ -113,7 +113,7 @@ void RsMediaSubsessionIterator::reset() {
 ////
 
 void rs_net_sensor::doRTP() {
-    std::cout << "RTP support thread started for " << m_name << " sensor" << std::endl;
+    std::cout << m_name << " : RTP support thread started" << std::endl;
 
     TaskScheduler* scheduler = BasicTaskScheduler::createNew(/* 1000 */); // Check this later
     m_env = BasicUsageEnvironment::createNew(*scheduler);
@@ -123,13 +123,15 @@ void rs_net_sensor::doRTP() {
 
     // Start the scheduler
     m_env->taskScheduler().doEventLoop(&m_eventLoopWatchVariable);
+
+    std::cout << m_name << " : RTP support thread exited" << std::endl;
 }
 
 void rs_net_sensor::doControl() {
-    bool current_state = is_streaming();
-    if (current_state != prev_state) {
+    bool streaming = is_streaming();
+    if (streaming != m_streaming) {
         // sensor state changed
-        prev_state = current_state;
+        m_streaming = streaming;
         if (is_streaming()) {
             std::cout << "Sensor enabled\n";
 
@@ -137,21 +139,33 @@ void rs_net_sensor::doControl() {
             RTSPClient::responseBufferSize = 100000;
             m_rtspClient = RSRTSPClient::createNew(*m_env, m_mrl.c_str());
             if (m_rtspClient == NULL) {
-                std::cout << "Failed to create a RTSP client for URL \"" << m_mrl << "\": " << m_env->getResultMsg() << "\n";
+                std::cout << "Failed to create a RTSP client for URL '" << m_mrl << "': " << m_env->getResultMsg() << std::endl;
                 throw std::runtime_error("Cannot create RTSP client");
             }
             std::cout << "Connected to " << m_mrl << std::endl;
 
             // Prepare profiles list and allocate the queues
+            m_stream_q.clear();
             for (auto stream : m_sw_sensor->get_active_streams()) {
-                ProfileQPair pq(stream, new SafeQueue);
-                m_stream_q.insert(pq);
+                // ProfileQPair pq(stream, new SafeQueue);
+                // m_stream_q.insert(pq);
+                m_stream_q[stream] = new SafeQueue;
             }
             
             // Start playing streams
             m_rtspClient->playStreams(m_stream_q);
+
+            // Start SW device thread
+            m_dev_flag = true;
+            m_dev = std::thread( [&](){ doDevice(); });
         } else {
             std::cout << "Sensor disabled\n";
+
+            // Stop SW device thread
+            m_dev_flag = false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
+            if (m_dev.joinable()) m_dev.join();
+
             // disable running RTP sessions
             m_rtspClient->shutdownStream();
             m_rtspClient = NULL;
@@ -178,13 +192,14 @@ void rs_net_sensor::doDevice() {
     static uint32_t fps_frame_count = 0;
     static auto beginning = std::chrono::system_clock::now();
 
-    std::cout << "Sensor " << m_name << " support thread started" << std::endl;
+    std::cout << m_name << " : SW device support thread started" << std::endl;
 
     int frame_count = 0; 
     bool prev_sensor_state = false;
 
-    while (m_eventLoopWatchVariable == 0) {
-        if (is_streaming())  {
+    // while (m_eventLoopWatchVariable == 0) {
+    //     if (is_streaming())  
+        while (m_dev_flag) {
             for (ProfileQPair pqp : m_stream_q) {                
                 if (pqp.second->empty()) continue;
 
@@ -195,11 +210,13 @@ void rs_net_sensor::doDevice() {
                 uint32_t total_size = 0;
 
                 while (offset < FRAME_SIZE) {
-                    uint8_t* data = 0;
-                    do {
-                        // data = sink->getFrame();
-                        data = pqp.second->front();
-                    } while (data == 0);
+                    // uint8_t* data = 0;
+                    // do {
+                    //     // data = sink->getFrame();
+                    //     data = pqp.second->front();
+                    // } while (data == 0);
+                    uint8_t* data = pqp.second->front();
+                    if (data == NULL) break;
                     chunk_header_t* ch = (chunk_header_t*)data;
 
                     if (ch->offset < offset) break;
@@ -270,9 +287,9 @@ void rs_net_sensor::doDevice() {
                 }
             }
         }
-    }
+    // }
 
-    std::cout << "Sensor " << m_name << " support thread exited" << std::endl;
+    std::cout << m_name << " : SW device support thread exited" << std::endl;
 }
 
 rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_address)

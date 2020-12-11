@@ -116,7 +116,7 @@ private:
 class rs_net_sensor {
 public: 
     rs_net_sensor(rs2::software_device device, std::string name)
-        : m_sw_device(device), m_name(name), prev_state(false) 
+        : m_sw_device(device), m_name(name), m_streaming(false), m_dev_flag(false) 
     {
         m_eventLoopWatchVariable = 0;
 
@@ -137,9 +137,9 @@ public:
 
     void start() {
         m_rtp = std::thread( [&](){ doRTP(); });
-        std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
-        m_dev = std::thread( [&](){ doDevice(); });
-        std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
+        // m_dev = std::thread( [&](){ doDevice(); });
+        // std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
     };
 
     void doRTP();
@@ -149,8 +149,6 @@ public:
     };
     void doControl();
     void doDevice();
-
-    RSRTSPClient* get_client() { return m_rtspClient; };
 
 private:    
     rs2::software_device m_sw_device;
@@ -163,13 +161,14 @@ private:
 
     std::thread    m_rtp;
     std::thread    m_dev;
+    volatile bool  m_dev_flag;
 
     RSRTSPClient*  m_rtspClient;
     char m_eventLoopWatchVariable;
 
     uint8_t* m_frame_raw;
 
-    bool prev_state;
+    bool m_streaming;
 
     UsageEnvironment* m_env;
 };
