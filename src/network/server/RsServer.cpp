@@ -85,7 +85,8 @@ server::server(rs2::device dev, std::string addr, int port)
             if (stream.format() == RS2_FORMAT_YUYV || stream.format() == RS2_FORMAT_UYVY || stream.format() == RS2_FORMAT_Z16 || stream.format() == RS2_FORMAT_Y8) {
                 // if (stream.fps() == 30)
                 {
-                    if (stream.width() == 640 && stream.height() == 480) {
+                    // if (stream.width() == 640 && stream.height() == 480) 
+                    {
                         sms->addSubsession(RsServerMediaSubsession::createNew(*env, pfq, stream));
                         // frames_queue* psq = new frames_queue(sensor, stream);
                         // sms->addSubsession(RsServerMediaSubsession::createNew(*env, psq));

@@ -165,9 +165,7 @@ void rs_net_sensor::doControl() {
             for (auto stream_profile : m_sw_sensor->get_active_streams()) {
                 // ProfileQPair pq(stream, new SafeQueue);
                 // m_stream_q.insert(pq);
-                rs_net_stream* net_stream = new rs_net_stream();
-                net_stream->profile = stream_profile.as<rs2::video_stream_profile>();
-                net_stream->queue   = new SafeQueue;
+                rs_net_stream* net_stream = new rs_net_stream(stream_profile);
                 uint64_t key = slib::profile2key(net_stream->profile.as<rs2::video_stream_profile>());
                 // net_stream->thread = std::thread( [&](){ doDevice(key); });
                 m_streams[key] = net_stream;
@@ -205,9 +203,9 @@ void rs_net_sensor::doControl() {
                 auto net_stream = ks.second;
                 while (!net_stream->queue->empty()) {
                     delete net_stream->queue->front();
-                   net_stream->queue->pop();
+                    net_stream->queue->pop();
                 }
-                delete net_stream->queue;
+                // delete net_stream->queue;
                 delete net_stream;
             }
             m_streams.clear();
@@ -224,6 +222,7 @@ void rs_net_sensor::doDevice(uint64_t key) {
     auto beginning = std::chrono::system_clock::now();
 
     rs2_video_stream s = slib::key2stream(key);
+    uint32_t frame_size = s.width * s.height * s.bpp;
     std::cout << m_name << "/" << rs2_stream_to_string(s.type) << "\t: SW device support thread started" << std::endl;
 
     int frame_count = 0; 
@@ -239,7 +238,7 @@ void rs_net_sensor::doDevice(uint64_t key) {
         uint32_t offset = 0;
         uint32_t total_size = 0;
 
-        while (offset < FRAME_SIZE) {
+        while (offset < frame_size) {
             uint8_t* data = 0;
             do {
                 if (!m_dev_flag) goto out;
@@ -279,8 +278,8 @@ void rs_net_sensor::doDevice(uint64_t key) {
             delete [] data;
         } 
 
-        uint8_t* frame_raw = new uint8_t[640*480*2];
-        memcpy(frame_raw, net_stream->m_frame_raw, FRAME_SIZE);
+        uint8_t* frame_raw = new uint8_t[frame_size];
+        memcpy(frame_raw, net_stream->m_frame_raw, frame_size);
 
         auto end = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed = end - start;
@@ -467,6 +466,7 @@ void RSRTSPClient::playSession() {
 
     while (*m_streams_it != m_streams.end()) {
         rs2::video_stream_profile stream = (*m_streams_it)->second->profile.as<rs2::video_stream_profile>();
+        uint64_t stream_key = slib::strip_default(slib::profile2key(stream));
 
         std::cout << " Stream : " << std::setw(15) << rs2_stream_to_string(stream.stream_type()) 
                                     << std::setw(15) << rs2_format_to_string(stream.format())      
@@ -475,18 +475,11 @@ void RSRTSPClient::playSession() {
         bool profile_found = false;
 
         MediaSubsessionIterator it(*m_session);
-        uint32_t stype = stream.stream_type();
-        std::cout << "Looking  for " << stream.width() << "x" << stream.height() << "x" << stream.fps() << ", type " << stype << ", index " << stream.stream_index() << std::endl;
+        std::cout << "Looking  for " << stream_key << std::endl;
         while (m_subsession = it.next()) {
-            uint32_t videoType  = m_subsession->attrVal_unsigned("type");
-            uint32_t videoIndex = m_subsession->attrVal_unsigned("index");
-            std::cout << "Checking for " << m_subsession->videoWidth() << "x" << m_subsession->videoHeight() << "x" << m_subsession->videoFPS() << ", type " << videoType << ", index " << videoIndex << std::endl;
-            if ((m_subsession->videoWidth()  == stream.width())  &&
-                (m_subsession->videoHeight() == stream.height()) &&
-                (m_subsession->videoFPS()    == stream.fps())    &&
-                (videoType == stream.stream_type()) && 
-                (videoIndex == stream.stream_index()))
-            {
+            uint64_t subsession_key = slib::strip_default((uint64_t)m_subsession->attrVal_unsigned("keyhi") << 32 | m_subsession->attrVal_unsigned("keylo"));
+            std::cout << "Checking for " << subsession_key << std::endl;
+            if (stream_key == subsession_key) {
                 std::cout << "Profile match for " << m_subsession->controlPath() << std::endl;
                 profile_found = true;
 
@@ -516,6 +509,7 @@ void RSRTSPClient::playSession() {
             }
         }
         if (!profile_found) envir() << "Cannot match a profile\n";
+        throw std::runtime_error("Cannot match a profile");
     }
 
     delete m_streams_it;

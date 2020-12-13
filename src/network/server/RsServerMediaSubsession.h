@@ -48,14 +48,11 @@ protected:
         if (auxSDPLine == NULL) auxSDPLine = "";
 
         rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
-        sprintf(privateAuxSDPLine, "%sactive=%s;sensor=%s;type=%u;index=%u;format=%u;bpp=%u\r\na=x-dimensions:%d,%d\r\na=x-framerate: %d\r\n", auxSDPLine, 
+        sprintf(privateAuxSDPLine, "%sactive=%s;keyhi=%u;keylo=%u\r\n", auxSDPLine, 
             m_queue->is_streaming(m_stream) ? "yes" : "no", 
-            vsp.stream_name().c_str(), 
-            vsp.stream_type(), 
-            vsp.stream_index(),             
-            vsp.format(),             
-            vsp.format() == RS2_FORMAT_Y8 ? 1 : 2,
-            vsp.width(), vsp.height(), vsp.fps());
+            (slib::profile2key(vsp) & 0xFFFFFFFF00000000) >> 32,
+            slib::profile2key(vsp) & 0x00000000FFFFFFFF
+        );
         return privateAuxSDPLine;
     };
 

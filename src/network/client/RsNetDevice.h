@@ -23,22 +23,6 @@
 
 #include <lz4.h>
 
-#define MAX_ACTIVE_STREAMS 4
-
-#define NUM_OF_SENSORS 2
-
-#define POLLING_SW_DEVICE_STATE_INTERVAL 100
-
-#define DEFAULT_PROFILE_FPS 15
-
-#define DEFAULT_PROFILE_WIDTH 424
-
-#define DEFAULT_PROFILE_HIGHT 240
-
-#define DEFAULT_PROFILE_COLOR_FORMAT RS2_FORMAT_RGB8 
-
-#define FRAME_SIZE (640*480*2)
-
 // forward
 class rs_net_device; 
 class RSRTSPClient;
@@ -136,7 +120,7 @@ public:
     static uint64_t profile2key(rs2::video_stream_profile profile) {
         convert_t t;
 
-        t.values.def    = profile.is_default();
+        t.values.def    = 0 /* profile.is_default() */ ;
         t.values.type   = profile.stream_type();  
         t.values.index  = profile.stream_index(); 
         t.values.uid    = profile.unique_id();    
@@ -217,11 +201,16 @@ private:
 
 class rs_net_stream {
 public:
-    rs_net_stream() {
-        m_frame_raw = new uint8_t[640*480*2];
+    rs_net_stream(rs2::stream_profile sp) : profile(sp) {
+        rs2::video_stream_profile vsp = sp.as<rs2::video_stream_profile>();
+        queue   = new SafeQueue;
+
+        int bpp = vsp.stream_type() == RS2_STREAM_INFRARED ? 1 : 2;
+        m_frame_raw = new uint8_t[vsp.width() * vsp.height() * bpp];
     };
     ~rs_net_stream() {
         if (m_frame_raw) delete [] m_frame_raw;
+        if (queue) delete queue;
     };
 
     rs2_video_stream     stream;

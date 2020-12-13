@@ -27,10 +27,10 @@ set(RS_CLIENT_NET_CPP
 #    ./client/RsSink.cpp
 #    ./client/RsSink.h
 
-    ./common/LZ4DecodeFilter.h
-    ./common/LZ4DecodeFilter.cpp
-    ./common/JPEGDecodeFilter.h
-    ./common/JPEGDecodeFilter.cpp
+    # ./common/LZ4DecodeFilter.h
+    # ./common/LZ4DecodeFilter.cpp
+    # ./common/JPEGDecodeFilter.h
+    # ./common/JPEGDecodeFilter.cpp
     # ./common/JPEG2000DecodeFilter.h
     # ./common/JPEG2000DecodeFilter.cpp
     ./common/LZ4VideoRTPSource.h
@@ -45,8 +45,8 @@ set(RS_COMMON_NET_CPP
     # ./common/jpeg2k.h
     # ./common/jpeg2k.cpp
 
-    ./common/jpeg.h
-    ./common/jpeg.cpp
+    # ./common/jpeg.h
+    # ./common/jpeg.cpp
 
     # ./common/if_lz4.h
     # ./common/if_lz4.cpp
@@ -84,10 +84,10 @@ set(RS_SERVER_NET_CPP
 #    ./server/RsSource.cpp
     ./server/RsSource.hh
 
-    ./common/LZ4EncodeFilter.h
-    ./common/LZ4EncodeFilter.cpp
-    ./common/JPEGEncodeFilter.h
-    ./common/JPEGEncodeFilter.cpp
+    # ./common/LZ4EncodeFilter.h
+    # ./common/LZ4EncodeFilter.cpp
+    # ./common/JPEGEncodeFilter.h
+    # ./common/JPEGEncodeFilter.cpp
     # ./common/JPEG2000EncodeFilter.h
     # ./common/JPEG2000EncodeFilter.cpp
 
