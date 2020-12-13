@@ -12,10 +12,11 @@
 #include <librealsense2/rs.hpp>
 
 #include <list>
+#include <sstream>
 
-#include "JPEG2000DecodeFilter.h"
-#include "JPEGDecodeFilter.h"
-#include "LZ4DecodeFilter.h"
+// #include "JPEG2000DecodeFilter.h"
+// #include "JPEGDecodeFilter.h"
+// #include "LZ4DecodeFilter.h"
 #include "LZ4VideoRTPSource.h"
 
 #include <zstd.h>
@@ -117,23 +118,48 @@ public:
     slib() {};
    ~slib() {};
 
-    static uint64_t profile2key(rs2::video_stream_profile profile) {
-        convert_t t;
+    static std::string print_profile(rs2::stream_profile profile) {
+        std::stringstream ss;
+        ss << std::setw(10) << profile.stream_type() << std::setw(2);
+        if (profile.stream_index()) ss << profile.stream_index();
+        else ss << "";
+        ss << std::setw(15) << rs2_format_to_string(profile.format());
 
-        t.values.def    = 0 /* profile.is_default() */ ;
+        std::stringstream vss;
+        if (profile.is<rs2::video_stream_profile>()) {
+            rs2::video_stream_profile vsp = profile.as<rs2::video_stream_profile>();
+            vss << vsp.width() << "x" << vsp.height();
+        }
+        
+        ss << std::setw(10) << vss.str() << ":" << profile.fps() << "\t";
+        return ss.str();
+    };
+
+    static uint64_t profile2key(rs2::stream_profile profile) {
+        convert_t t;
+        t.key = 0;
+
+        // t.values.def    = 0 /* profile.is_default() */ ;
         t.values.type   = profile.stream_type();  
         t.values.index  = profile.stream_index(); 
         t.values.uid    = profile.unique_id();    
-        t.values.width  = profile.width();        
-        t.values.height = profile.height();       
         t.values.fps    = profile.fps();          
         t.values.format = profile.format();
+
+        // try {
+            if (profile.is<rs2::video_stream_profile>()) {
+                rs2::video_stream_profile vsp = profile.as<rs2::video_stream_profile>();
+                t.values.width  = vsp.width();        
+                t.values.height = vsp.height();       
+            } 
+        // } catch(...) {};
 
         return t.key;
     };
 
     static uint64_t stream2key(rs2_video_stream stream) {
         convert_t t;
+        t.key = 0;
 
         t.values.type   = stream.type;  
         t.values.index  = stream.index; 
@@ -165,22 +191,22 @@ public:
     };
 
     static bool is_default(uint64_t key) {
-        return key >> 60;
+        return false;
     };
 
-    static uint64_t strip_default(uint64_t key) {
-        return key & 0x0FFFFFFFFFFFFFFF;
-    };
+    // static uint64_t strip_default(uint64_t key) {
+    //     return key & 0x0FFFFFFFFFFFFFFF;
+    // };
 
 private:
 #pragma pack (push, 1)
     typedef union convert {
         uint64_t key;
         struct vals {
-            uint8_t  def   : 4;
+            // uint8_t  def   : 4;
             uint8_t  type  : 4;
             uint8_t  index : 4;
-            uint8_t  uid   : 4;
+            uint8_t  uid   ;
             uint16_t width ;
             uint16_t height;
             uint8_t  fps   ;
@@ -202,11 +228,15 @@ private:
 class rs_net_stream {
 public:
     rs_net_stream(rs2::stream_profile sp) : profile(sp) {
-        rs2::video_stream_profile vsp = sp.as<rs2::video_stream_profile>();
-        queue   = new SafeQueue;
+        if (profile.is<rs2::video_stream_profile>()) {
+            rs2::video_stream_profile vsp = sp.as<rs2::video_stream_profile>();
+            int bpp = vsp.stream_type() == RS2_STREAM_INFRARED ? 1 : 2;
+            m_frame_raw = new uint8_t[vsp.width() * vsp.height() * bpp];
+        } else {
+            m_frame_raw = new uint8_t[32];
+        }
 
-        int bpp = vsp.stream_type() == RS2_STREAM_INFRARED ? 1 : 2;
-        m_frame_raw = new uint8_t[vsp.width() * vsp.height() * bpp];
+        queue   = new SafeQueue;
     };
     ~rs_net_stream() {
         if (m_frame_raw) delete [] m_frame_raw;
@@ -232,15 +262,30 @@ public:
     ~rs_net_sensor() {};
 
     void set_mrl(std::string mrl) { m_mrl  = mrl; };
+
     void add_profile(uint64_t key) { 
-        StreamProfile sp = std::make_shared<rs2::video_stream_profile>(m_sw_sensor->add_video_stream(slib::key2stream(key), slib::is_default(key)));
-
-        // rs_net_stream* ns = new rs_net_stream;
-        // ns->stream  = slib::key2stream(key);
-        // ns->profile = std::make_shared<rs2::video_stream_profile>(m_sw_sensor->add_video_stream(ns->stream, slib::is_default(key)));
-        // ns->queue   = new SafeQueue();
-
-        // m_streams[slib::strip_default(key)] = ns;
+        rs2_video_stream  vstream = slib::key2stream(key);
+        rs2_motion_stream mstream;
+        switch (vstream.type) {
+        case RS2_STREAM_DEPTH    :
+        case RS2_STREAM_COLOR    :
+        case RS2_STREAM_INFRARED :
+        case RS2_STREAM_FISHEYE  :
+            m_sw_sensor->add_video_stream(vstream, slib::is_default(key));
+            break;
+        case RS2_STREAM_GYRO     :
+        case RS2_STREAM_ACCEL    :
+            mstream.type  = vstream.type;
+            mstream.index = vstream.index;
+            mstream.uid   = vstream.uid; // software-device.cpp:124
+            mstream.fps   = vstream.fps;
+            mstream.fmt   = vstream.fmt;
+            m_sw_sensor->add_motion_stream(mstream, slib::is_default(key));
+            break;
+        default:
+            throw std::runtime_error("Unsupported stream type");
+        }
+        // StreamProfile sp = std::make_shared<rs2::video_stream_profile>(m_sw_sensor->add_video_stream(stream, slib::is_default(key)));
     };
 
     bool is_streaming() { return m_sw_sensor->get_active_streams().size() > 0; };

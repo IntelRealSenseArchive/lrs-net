@@ -199,5 +199,5 @@ private:
     std::thread m_httpd;
     void doHTTP();
 
-    std::string m_sdsc; // sensors description
+    std::string m_sensors_desc; // sensors description
 };

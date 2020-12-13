@@ -21,16 +21,11 @@
 
 #include <lz4.h>
 
-// using FrameData     = std::shared_ptr<uint8_t[]>;
-// using FrameDataQ    = std::shared_ptr<std::queue<FrameData>>;
-// using ConsumerQMap  = std::map<void*, FrameDataQ>;
-// using ConsumerQPair = std::pair<void*, FrameDataQ>;
-
 using FrameData        = std::shared_ptr<uint8_t[]>;
 using FrameDataQ       = std::shared_ptr<std::queue<FrameData>>;
 using StreamFrameDataQ = std::map<uint64_t, std::shared_ptr<std::queue<FrameData>>>;
-using ConsumerQMap  = std::map<void*, StreamFrameDataQ>;
-using ConsumerQPair = std::pair<void*, StreamFrameDataQ>;
+using ConsumerQMap     = std::map<void*, StreamFrameDataQ>;
+using ConsumerQPair    = std::pair<void*, StreamFrameDataQ>;
 
 ////////////////////////////////////////////////////////////
 
@@ -44,20 +39,19 @@ public:
     }; // TODO: improve
 
     void addStream(rs2::stream_profile stream) {
-        m_streams[slib::profile2key(stream.as<rs2::video_stream_profile>())] = stream;
+        m_streams[slib::profile2key(stream)] = stream;
     };
     
     void delStream(rs2::stream_profile stream) {
-        m_streams.erase(slib::profile2key(stream.as<rs2::video_stream_profile>()));
+        m_streams.erase(slib::profile2key(stream));
     };
     
     bool is_streaming(rs2::stream_profile stream) { 
-        uint64_t key = slib::profile2key(stream.as<rs2::video_stream_profile>());
+        uint64_t key = slib::profile2key(stream);
 
         auto streams = m_sensor.get_active_streams();
         for (auto it = streams.begin(); it != streams.end(); ++it) {
-            rs2::video_stream_profile vsp = (*it).as<rs2::video_stream_profile>();
-            if (key == slib::profile2key(vsp)) return true;
+            if (key == slib::profile2key(*it)) return true;
         }
 
         return false;
@@ -67,7 +61,7 @@ public:
 
     FrameData get_frame(void* consumer, rs2::stream_profile stream)  {
         static std::map<uint64_t, uint32_t> frame_count; 
-        uint64_t key = slib::profile2key(stream.as<rs2::video_stream_profile>());
+        uint64_t key = slib::profile2key(stream);
 
         if (m_queues.find(consumer) == m_queues.end()) {
             // new consumer - allocate the queue for it
@@ -89,9 +83,7 @@ public:
             m_sensor.open(profiles);
 
             auto callback = [&](const rs2::frame& frame) {
-#if 1                
-                // uint32_t frame_count = 0;
-                uint64_t profile_key = slib::profile2key(frame.get_profile().as<rs2::video_stream_profile>());   
+                uint64_t profile_key = slib::profile2key(frame.get_profile());
                 static std::chrono::system_clock::time_point beginning = std::chrono::system_clock::now();
 
                 auto start = std::chrono::system_clock::now();
@@ -149,12 +141,21 @@ public:
                 frame_count[profile_key]++;
                 double fps = 0;
                 if (total_time.count() > 0) fps = (double)frame_count[profile_key] / (double)total_time.count();
-                // std::cout << "Frame compression time " << std::fixed << std::setw(5) << std::setprecision(2) 
-                //           << elapsed.count() * 1000 << "ms,\tsize " << size << " => " << out_size << " (" << (float)(size) / (float)out_size << " ), FPS: " << fps << "\n";
 
-                std::cout << "Frame " << std::setw(25) << get_name().append("/").append(rs2_stream_to_string(frame.get_profile().stream_type())).append(std::to_string(frame.get_profile().stream_index())) << " compression time " 
-                          << std::fixed << std::setw(5) << std::setprecision(2) 
-                          << elapsed.count() * 1000 << "ms,\tsize " << size << " => " << out_size << " (" << (float)(size) / (float)out_size << " ), FPS: " << fps << "\n";
+                std::stringstream ss_name;
+                ss_name << "Frame '" << std::setiosflags(std::ios::left);
+                ss_name << std::setw(13) << get_name() << " / " << rs2_stream_to_string(frame.get_profile().stream_type());
+                if (frame.get_profile().stream_index()) ss_name << " " << frame.get_profile().stream_index();
+                ss_name << "'";
+
+                std::stringstream ss;
+                ss << std::setiosflags(std::ios::left) << std::setw(35) << ss_name.str();
+                ss << std::setiosflags(std::ios::right) << std::setiosflags(std::ios::fixed) << std::setprecision(2); 
+                ss << "   compression time " << std::setw(7) << elapsed.count() * 1000 << "ms, ";
+                ss << "size " << std::setw(7) << size << " => " << std::setw(7) << out_size << " (" << (float)(size) / (float)out_size << "), ";
+                ss << "FPS: " << std::setw(7) << fps << std::endl;
+
+                std::cout << ss.str();
                 
                 if (total_time > std::chrono::seconds(1)) {
                     beginning = std::chrono::system_clock::now();
@@ -162,17 +163,6 @@ public:
                         frame_count[kp.first] = 0;
                     }
                 }
-
-#else
-                uint8_t* data = (uint8_t*)frame.get_data();
-                uint32_t size = frame.get_data_size();
-                FrameData chunk(new uint8_t[size]);
-                memcpy(chunk.get(), data, size);
-                // push the chunk to queues
-                for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
-                    (it->second)->push(chunk);
-
-#endif                          
             };
             m_sensor.start(callback);            
         }

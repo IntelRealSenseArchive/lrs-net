@@ -14,9 +14,9 @@
 #include "RsSensor.hh"
 #include "RsSource.hh"
 
-#include "JPEG2000EncodeFilter.h"
-#include "JPEGEncodeFilter.h"
-#include "LZ4EncodeFilter.h"
+// #include "JPEG2000EncodeFilter.h"
+// #include "JPEGEncodeFilter.h"
+// #include "LZ4EncodeFilter.h"
 #include "LZ4VideoRTPSink.h"
 
 #include <iostream>
@@ -47,11 +47,11 @@ protected:
         const char* auxSDPLine = OnDemandServerMediaSubsession::getAuxSDPLine(rtpSink, inputSource);
         if (auxSDPLine == NULL) auxSDPLine = "";
 
-        rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
+        // rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
         sprintf(privateAuxSDPLine, "%sactive=%s;keyhi=%u;keylo=%u\r\n", auxSDPLine, 
             m_queue->is_streaming(m_stream) ? "yes" : "no", 
-            (slib::profile2key(vsp) & 0xFFFFFFFF00000000) >> 32,
-            slib::profile2key(vsp) & 0x00000000FFFFFFFF
+            (slib::profile2key(m_stream) & 0xFFFFFFFF00000000) >> 32,
+            slib::profile2key(m_stream) & 0x00000000FFFFFFFF
         );
         return privateAuxSDPLine;
     };

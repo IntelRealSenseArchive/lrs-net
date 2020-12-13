@@ -17,10 +17,10 @@
 #include <thread>
 #include <functional>
 
-#include "JPEG2000DecodeFilter.h"
-#include "JPEGDecodeFilter.h"
-#include "LZ4DecodeFilter.h"
-#include "LZ4VideoRTPSource.h"
+// #include "JPEG2000DecodeFilter.h"
+// #include "JPEGDecodeFilter.h"
+// #include "LZ4DecodeFilter.h"
+// #include "LZ4VideoRTPSource.h"
 
 #include <zstd.h>
 #include <zstd_errors.h>
@@ -144,37 +144,19 @@ void rs_net_sensor::doControl() {
             }
             std::cout << "Connected to " << m_mrl << std::endl;
 
-            // // Prepare profiles list and allocate the queues
-            // m_stream_q.clear();
-            // for (auto stream : m_sw_sensor->get_active_streams()) {
-            //     // ProfileQPair pq(stream, new SafeQueue);
-            //     // m_stream_q.insert(pq);
-            //     m_stream_q[stream] = new SafeQueue;
-            // }
-            
-            // // Start playing streams
-            // m_rtspClient->playStreams(m_stream_q);
-
-            // // Start SW device thread
-            // m_dev_flag = true;
-            // m_dev = std::thread( [&](){ doDevice(); });
-
             // Prepare profiles list and allocate the queues
             m_streams.clear();
             // m_dev_flag = true;
             for (auto stream_profile : m_sw_sensor->get_active_streams()) {
-                // ProfileQPair pq(stream, new SafeQueue);
-                // m_stream_q.insert(pq);
                 rs_net_stream* net_stream = new rs_net_stream(stream_profile);
-                uint64_t key = slib::profile2key(net_stream->profile.as<rs2::video_stream_profile>());
-                // net_stream->thread = std::thread( [&](){ doDevice(key); });
+                uint64_t key = slib::profile2key(net_stream->profile);
                 m_streams[key] = net_stream;
             }
             
             // Start playing streams
             m_rtspClient->playStreams(m_streams);
 
-            // // Start SW device thread
+            // Start SW device thread
             m_dev_flag = true;
             for (auto ks : m_streams) {
                 rs_net_stream* net_stream = ks.second;
@@ -188,7 +170,6 @@ void rs_net_sensor::doControl() {
             // Stop SW device thread
             m_dev_flag = false;
             std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
-            // if (m_dev.joinable()) m_dev.join();
             for (auto ks : m_streams) {
                 auto net_stream = ks.second;
                 if (net_stream->thread.joinable()) net_stream->thread.join();
@@ -221,15 +202,23 @@ void rs_net_sensor::doDevice(uint64_t key) {
     uint32_t fps_frame_count = 0;
     auto beginning = std::chrono::system_clock::now();
 
-    rs2_video_stream s = slib::key2stream(key);
-    uint32_t frame_size = s.width * s.height * s.bpp;
-    std::cout << m_name << "/" << rs2_stream_to_string(s.type) << "\t: SW device support thread started" << std::endl;
+    uint32_t frame_size;
+    rs_net_stream* net_stream = m_streams[key];
+    if (net_stream->profile.is<rs2::video_stream_profile>()) {
+        rs2::video_stream_profile vsp = net_stream->profile.as<rs2::video_stream_profile>();
+        uint32_t bpp = (vsp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
+        frame_size = vsp.width() * vsp.height() * bpp;
+    } else if (net_stream->profile.is<rs2::motion_stream_profile>()) {
+        frame_size = 32;
+    } else throw std::runtime_error("Unknown profile on SW device support thread start.");
+
+    // rs2_video_stream s = slib::key2stream(key);
+    std::cout << m_name << "/" << rs2_stream_to_string(net_stream->profile.stream_type()) << "\t: SW device support thread started" << std::endl;
 
     int frame_count = 0; 
     bool prev_sensor_state = false;
 
     while (m_dev_flag) {
-        rs_net_stream* net_stream = m_streams[key];
         if (net_stream->queue->empty()) continue;
 
         auto start = std::chrono::system_clock::now();
@@ -242,11 +231,8 @@ void rs_net_sensor::doDevice(uint64_t key) {
             uint8_t* data = 0;
             do {
                 if (!m_dev_flag) goto out;
-                // data = sink->getFrame();
                 data = net_stream->queue->front();
             } while (data == 0);
-            // uint8_t* data = net_stream->queue->front();
-            // if (data == NULL) break;
             chunk_header_t* ch = (chunk_header_t*)data;
 
             if (ch->offset < offset) break;
@@ -288,10 +274,22 @@ void rs_net_sensor::doDevice(uint64_t key) {
         double fps;
         if (total_time.count() > 0) fps = (double)fps_frame_count / (double)total_time.count();
         else fps = 0;
-        std::cout << "Frame " << std::setw(25) << std::string(m_name).append("/").append(rs2_stream_to_string(s.type)).append(std::to_string(s.index)) << " decompression time " 
-                  << std::fixed << std::setw(5) << std::setprecision(2) 
-                  << elapsed.count() * 1000 << " ms, size " << total_size << " => " << size << ", FPS: " << fps << "\n";                            
 
+        std::stringstream ss_name;
+        ss_name << "Frame '" << std::setiosflags(std::ios::left);
+        ss_name << std::setw(13) << m_name << " / " << rs2_stream_to_string(net_stream->profile.stream_type());
+        if (net_stream->profile.stream_index()) ss_name << " " << net_stream->profile.stream_index();
+        ss_name << "'";
+
+        std::stringstream ss;
+        ss << std::setiosflags(std::ios::left) << std::setw(35) << ss_name.str();
+        ss << std::setiosflags(std::ios::right) << std::setiosflags(std::ios::fixed) << std::setprecision(2); 
+        ss << " decompression time " << std::setw(7) << elapsed.count() * 1000 << "ms, ";
+        ss << "size " << std::setw(7) << total_size << " => " << std::setw(7) << size << ", ";
+        ss << "FPS: " << std::setw(7) << fps << std::endl;
+
+        std::cout << ss.str();
+        
         if (total_time > std::chrono::seconds(1)) {
             beginning = std::chrono::system_clock::now();
             fps_frame_count = 0;
@@ -299,28 +297,40 @@ void rs_net_sensor::doDevice(uint64_t key) {
 
         // std::cout << "Chunks: " << chunks_allocated << "\n"; 
 
-        if (frame_raw) {
-            // send it into device
-            rs2::video_stream_profile sp = net_stream->profile.as<rs2::video_stream_profile>();
-            uint32_t bpp = (sp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
+        // send it into device
+        if (net_stream->profile.is<rs2::video_stream_profile>()) {
+            rs2::video_stream_profile vsp = net_stream->profile.as<rs2::video_stream_profile>();
+            uint32_t bpp = (vsp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
             m_sw_sensor->on_video_frame(
                 { 
                     (void*)frame_raw, 
                     [] (void* f) { delete [] (uint8_t*)f; }, 
-                    sp.width() * bpp,
+                    vsp.width() * bpp,
                     bpp,                                                  
                     (double)time(NULL), 
                     RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
                     ++frame_count, 
-                    sp
+                    vsp
                 }
             );
-        }
+        } else if (net_stream->profile.is<rs2::motion_stream_profile>()){
+            rs2::motion_stream_profile msp = net_stream->profile.as<rs2::motion_stream_profile>();
+            m_sw_sensor->on_motion_frame(
+                { 
+                    (void*)frame_raw, 
+                    [] (void* f) { delete [] (uint8_t*)f; }, 
+                    (double)time(NULL), 
+                    RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
+                    ++frame_count, 
+                    msp
+                }
+            );
+        } else throw std::runtime_error("Unknown profile on frame departure.");
     }
 
 out:
     std::this_thread::sleep_for(std::chrono::milliseconds(std::rand()%10)); 
-    std::cout << m_name << "/" << rs2_stream_to_string(s.type) << "\t: SW device support thread exited" << std::endl;
+    std::cout << m_name << "/" << rs2_stream_to_string(net_stream->profile.stream_type()) << "\t: SW device support thread exited" << std::endl;
 }
 
 rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_address)
@@ -465,21 +475,18 @@ void RSRTSPClient::playSession() {
     if (m_streams_it == NULL) m_streams_it = new std::map<uint64_t, rs_net_stream*>::iterator(m_streams.begin());
 
     while (*m_streams_it != m_streams.end()) {
-        rs2::video_stream_profile stream = (*m_streams_it)->second->profile.as<rs2::video_stream_profile>();
-        uint64_t stream_key = slib::strip_default(slib::profile2key(stream));
-
-        std::cout << " Stream : " << std::setw(15) << rs2_stream_to_string(stream.stream_type()) 
-                                    << std::setw(15) << rs2_format_to_string(stream.format())      
-                                    << std::setw(15) << stream.width() << "x" << stream.height() << "x" << stream.fps() << std::endl;
+        rs2::stream_profile profile = (*m_streams_it)->second->profile;
+        uint64_t profile_key = slib::profile2key(profile);
+        std::cout << slib::print_profile(profile) << std::endl;
 
         bool profile_found = false;
 
         MediaSubsessionIterator it(*m_session);
-        std::cout << "Looking  for " << stream_key << std::endl;
+        std::cout << "Looking  for " << profile_key << std::endl;
         while (m_subsession = it.next()) {
-            uint64_t subsession_key = slib::strip_default((uint64_t)m_subsession->attrVal_unsigned("keyhi") << 32 | m_subsession->attrVal_unsigned("keylo"));
+            uint64_t subsession_key = (uint64_t)m_subsession->attrVal_unsigned("keyhi") << 32 | m_subsession->attrVal_unsigned("keylo");
             std::cout << "Checking for " << subsession_key << std::endl;
-            if (stream_key == subsession_key) {
+            if (profile_key == subsession_key) {
                 std::cout << "Profile match for " << m_subsession->controlPath() << std::endl;
                 profile_found = true;
 

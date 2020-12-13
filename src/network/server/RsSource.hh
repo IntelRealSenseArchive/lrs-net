@@ -29,23 +29,13 @@ protected:
         : FramedSource(t_env), m_queue(pfq), m_stream(stream) 
     {
         m_queue->addStream(m_stream);
-
-        rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
-        std::cout << "Source for " << m_queue->get_name() << " started for stream: " 
-                << std::setw(15) << vsp.stream_type()
-                << std::setw(15) << rs2_format_to_string(vsp.format())      
-                << std::setw(15) << vsp.width() << "x" << vsp.height() << "x" << vsp.fps() << std::endl;    
+        std::cout << "Source started for stream: " << slib::print_profile(m_stream) << std::endl;
     };
 
     virtual ~RsDeviceSource() 
     {
         m_queue->delStream(m_stream);
-
-        rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
-        std::cout << "Source for " << m_queue->get_name() << " stopped for stream: " 
-                << std::setw(15) << vsp.stream_type()
-                << std::setw(15) << rs2_format_to_string(vsp.format())      
-                << std::setw(15) << vsp.width() << "x" << vsp.height() << "x" << vsp.fps() << std::endl;    
+        std::cout << "Source stopped for stream: " << slib::print_profile(m_stream) << std::endl;
     };
 
 protected:
