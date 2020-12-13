@@ -21,19 +21,23 @@
 
 #include <lz4.h>
 
-using FrameData     = std::shared_ptr<uint8_t[]>;
-using FrameDataQ    = std::shared_ptr<std::queue<FrameData>>;
-using ConsumerQMap  = std::map<void*, FrameDataQ>;
-using ConsumerQPair = std::pair<void*, FrameDataQ>;
+// using FrameData     = std::shared_ptr<uint8_t[]>;
+// using FrameDataQ    = std::shared_ptr<std::queue<FrameData>>;
+// using ConsumerQMap  = std::map<void*, FrameDataQ>;
+// using ConsumerQPair = std::pair<void*, FrameDataQ>;
+
+using FrameData        = std::shared_ptr<uint8_t[]>;
+using FrameDataQ       = std::shared_ptr<std::queue<FrameData>>;
+using StreamFrameDataQ = std::map<uint64_t, std::shared_ptr<std::queue<FrameData>>>;
+using ConsumerQMap  = std::map<void*, StreamFrameDataQ>;
+using ConsumerQPair = std::pair<void*, StreamFrameDataQ>;
 
 ////////////////////////////////////////////////////////////
 
 class frames_queue {
 public:
-    // frames_queue(rs2::sensor sensor, rs2::video_stream_profile stream)
-    //     : m_sensor(sensor), m_stream(stream) {};
     frames_queue(rs2::sensor sensor)
-        : m_sensor(sensor), is_open(false), count(0) {};
+        : m_sensor(sensor) {};
    ~frames_queue() { 
         for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it)
             stop(it->first);
@@ -57,50 +61,28 @@ public:
         }
 
         return false;
-
-        // for (auto it = streams.begin(); it != streams.end(); ++it) {
-        //     rs2::video_stream_profile vsp = (*it).as<rs2::video_stream_profile>();
-        //     if (vsp.fps() == get_fps() && 
-        //         vsp.width() == get_width() &&
-        //         vsp.height() == get_height() &&
-        //         vsp.stream_type() == get_type() &&
-        //         vsp.stream_index() == get_index()) return true;
-        // }
-
-        // return false;
-        // return m_sensor.get_active_streams().size() > 0;
     };
     
     std::string get_name() { return m_sensor.get_info(RS2_CAMERA_INFO_NAME); };
 
-    // uint32_t get_format()  { return m_stream.format();   };
-    // uint32_t get_bpp()     { return m_stream.format() == RS2_FORMAT_Y8 ? 1 : 2; };
-
-    // uint32_t get_type()    { return m_stream.stream_type();   };
-    // uint32_t get_index()   { return m_stream.stream_index();  };
-    // uint32_t get_fps()     { return m_stream.fps();           };
-
-    // uint32_t get_width()   { return m_stream.width();  };
-    // uint32_t get_height()  { return m_stream.height(); };
-
-    // uint32_t get_size()   { return 640*480*2; };
-
     FrameData get_frame(void* consumer, rs2::stream_profile stream)  { 
+        uint64_t key = slib::profile2key(stream.as<rs2::video_stream_profile>());
+
         if (m_queues.find(consumer) == m_queues.end()) {
             // new consumer - allocate the queue for it
-            FrameDataQ q(new std::queue<FrameData>);
-            m_queues.insert(ConsumerQPair(consumer, q));
+            StreamFrameDataQ sfdq;
+            for (auto kp : m_streams) {
+                FrameDataQ q(new std::queue<FrameData>);
+                sfdq[kp.first] = q;
+            }
+            m_queues.insert(ConsumerQPair(consumer, sfdq));
         }
 
         if (!is_streaming(stream)) {
-            // start the sensor
-            // std::cout << "Sensor " << m_sensor.get_info(RS2_CAMERA_INFO_NAME) << " started for stream: " 
-            //     << std::setw(15) << get_type()
-            //     << std::setw(15) << rs2_format_to_string(m_stream.format())      
-            //     << std::setw(15) << get_width() << "x" << get_height() << "x" << get_fps() << std::endl;    
-
-            // m_sensor.open(m_stream);
-            // m_sensor.set_option(RS2_OPTION_AUTO_EXPOSURE_PRIORITY, 0); // TODO: should be removed
+            // create vector of profiles and open the sensor
+            std::vector<rs2::stream_profile> profiles;
+            for (auto kp : m_streams) profiles.emplace_back(kp.second);
+            m_sensor.open(profiles);
 
             auto callback = [&](const rs2::frame& frame) {
 #if 1                
@@ -152,7 +134,7 @@ public:
                     for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it) 
                     {
                         std::lock_guard<std::mutex> lck (m_queues_mutex);
-                        (it->second)->push(chunk);
+                        it->second[slib::profile2key(frame.get_profile().as<rs2::video_stream_profile>())]->push(chunk);
                     }
                 }
 
@@ -181,20 +163,15 @@ public:
 
 #endif                          
             };
-
-            // create vector of profiles and open the sensor
-            std::vector<rs2::stream_profile> profiles;
-            for (auto kp : m_streams) profiles.emplace_back(kp.second);
-            m_sensor.open(profiles);
             m_sensor.start(callback);            
         }
 
         FrameData frame = nullptr;
-        if (!m_queues[consumer]->empty()) 
+        if (!m_queues[consumer][key]->empty()) 
         {
             std::lock_guard<std::mutex> lck (m_queues_mutex);
-            frame = m_queues[consumer]->front();
-            m_queues[consumer]->pop(); 
+            frame = m_queues[consumer][key]->front();
+            m_queues[consumer][key]->pop(); 
         }
 
         return frame;
@@ -209,9 +186,6 @@ public:
     };
 
 private:
-    uint32_t count;
-    bool is_open;
-
     rs2::sensor                             m_sensor;
     std::map<uint64_t, rs2::stream_profile> m_streams;
 

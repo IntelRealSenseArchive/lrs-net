@@ -84,7 +84,5 @@ private:
 
 private:
     frames_queue*       m_queue;
-
-    // rs2::sensor         m_sensor;
     rs2::stream_profile m_stream;
 };
