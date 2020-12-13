@@ -65,7 +65,8 @@ public:
     
     std::string get_name() { return m_sensor.get_info(RS2_CAMERA_INFO_NAME); };
 
-    FrameData get_frame(void* consumer, rs2::stream_profile stream)  { 
+    FrameData get_frame(void* consumer, rs2::stream_profile stream)  {
+        static std::map<uint64_t, uint32_t> frame_count; 
         uint64_t key = slib::profile2key(stream.as<rs2::video_stream_profile>());
 
         if (m_queues.find(consumer) == m_queues.end()) {
@@ -81,12 +82,16 @@ public:
         if (!is_streaming(stream)) {
             // create vector of profiles and open the sensor
             std::vector<rs2::stream_profile> profiles;
-            for (auto kp : m_streams) profiles.emplace_back(kp.second);
+            for (auto kp : m_streams) {
+                profiles.emplace_back(kp.second);
+                frame_count[kp.first] = 0;
+            }
             m_sensor.open(profiles);
 
             auto callback = [&](const rs2::frame& frame) {
 #if 1                
-                static uint32_t frame_count = 0;    
+                // uint32_t frame_count = 0;
+                uint64_t profile_key = slib::profile2key(frame.get_profile().as<rs2::video_stream_profile>());   
                 static std::chrono::system_clock::time_point beginning = std::chrono::system_clock::now();
 
                 auto start = std::chrono::system_clock::now();
@@ -134,22 +139,28 @@ public:
                     for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it) 
                     {
                         std::lock_guard<std::mutex> lck (m_queues_mutex);
-                        it->second[slib::profile2key(frame.get_profile().as<rs2::video_stream_profile>())]->push(chunk);
+                        it->second[profile_key]->push(chunk);
                     }
                 }
 
                 auto end = std::chrono::system_clock::now();
                 std::chrono::duration<double> elapsed = end - start;
                 std::chrono::duration<double> total_time = end - beginning;
-                frame_count++;
+                frame_count[profile_key]++;
                 double fps = 0;
-                if (total_time.count() > 0) fps = (double)frame_count / (double)total_time.count();
-                std::cout << "Frame compression time " << std::fixed << std::setw(5) << std::setprecision(2) 
+                if (total_time.count() > 0) fps = (double)frame_count[profile_key] / (double)total_time.count();
+                // std::cout << "Frame compression time " << std::fixed << std::setw(5) << std::setprecision(2) 
+                //           << elapsed.count() * 1000 << "ms,\tsize " << size << " => " << out_size << " (" << (float)(size) / (float)out_size << " ), FPS: " << fps << "\n";
+
+                std::cout << "Frame " << std::setw(25) << get_name().append("/").append(rs2_stream_to_string(frame.get_profile().stream_type())).append(std::to_string(frame.get_profile().stream_index())) << " compression time " 
+                          << std::fixed << std::setw(5) << std::setprecision(2) 
                           << elapsed.count() * 1000 << "ms,\tsize " << size << " => " << out_size << " (" << (float)(size) / (float)out_size << " ), FPS: " << fps << "\n";
                 
                 if (total_time > std::chrono::seconds(1)) {
                     beginning = std::chrono::system_clock::now();
-                    frame_count = 0;
+                    for (auto kp : frame_count) {
+                        frame_count[kp.first] = 0;
+                    }
                 }
 
 #else

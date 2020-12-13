@@ -220,8 +220,8 @@ void rs_net_sensor::doControl() {
 uint32_t chunks_allocated = 0;
 
 void rs_net_sensor::doDevice(uint64_t key) {
-    static uint32_t fps_frame_count = 0;
-    static auto beginning = std::chrono::system_clock::now();
+    uint32_t fps_frame_count = 0;
+    auto beginning = std::chrono::system_clock::now();
 
     rs2_video_stream s = slib::key2stream(key);
     std::cout << m_name << "/" << rs2_stream_to_string(s.type) << "\t: SW device support thread started" << std::endl;
@@ -240,13 +240,14 @@ void rs_net_sensor::doDevice(uint64_t key) {
         uint32_t total_size = 0;
 
         while (offset < FRAME_SIZE) {
-            // uint8_t* data = 0;
-            // do {
-            //     // data = sink->getFrame();
-            //     data = pqp.second->front();
-            // } while (data == 0);
-            uint8_t* data = net_stream->queue->front();
-            if (data == NULL) break;
+            uint8_t* data = 0;
+            do {
+                if (!m_dev_flag) goto out;
+                // data = sink->getFrame();
+                data = net_stream->queue->front();
+            } while (data == 0);
+            // uint8_t* data = net_stream->queue->front();
+            // if (data == NULL) break;
             chunk_header_t* ch = (chunk_header_t*)data;
 
             if (ch->offset < offset) break;
@@ -288,8 +289,9 @@ void rs_net_sensor::doDevice(uint64_t key) {
         double fps;
         if (total_time.count() > 0) fps = (double)fps_frame_count / (double)total_time.count();
         else fps = 0;
-        std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) 
-                                                << elapsed.count() * 1000 << " ms, size " << total_size << " => " << size << ", FPS: " << fps << "\n";                            
+        std::cout << "Frame " << std::setw(25) << std::string(m_name).append("/").append(rs2_stream_to_string(s.type)).append(std::to_string(s.index)) << " decompression time " 
+                  << std::fixed << std::setw(5) << std::setprecision(2) 
+                  << elapsed.count() * 1000 << " ms, size " << total_size << " => " << size << ", FPS: " << fps << "\n";                            
 
         if (total_time > std::chrono::seconds(1)) {
             beginning = std::chrono::system_clock::now();
@@ -317,6 +319,7 @@ void rs_net_sensor::doDevice(uint64_t key) {
         }
     }
 
+out:
     std::this_thread::sleep_for(std::chrono::milliseconds(std::rand()%10)); 
     std::cout << m_name << "/" << rs2_stream_to_string(s.type) << "\t: SW device support thread exited" << std::endl;
 }
