@@ -24,10 +24,13 @@
 class RsServerMediaSubsession : public OnDemandServerMediaSubsession
 {
 public:
-    static RsServerMediaSubsession* createNew(UsageEnvironment& t_env, frames_queue* psq) { return new RsServerMediaSubsession(t_env, psq); };
+    static RsServerMediaSubsession* createNew(UsageEnvironment& t_env, frames_queue* pfq, rs2::stream_profile stream) { 
+        return new RsServerMediaSubsession(t_env, pfq, stream); 
+    };
 
 protected:
-    RsServerMediaSubsession(UsageEnvironment& t_env, frames_queue* psq) : OnDemandServerMediaSubsession(t_env, false), m_queue(psq) {};
+    RsServerMediaSubsession(UsageEnvironment& t_env, frames_queue* pfq, rs2::stream_profile stream) 
+        : OnDemandServerMediaSubsession(t_env, false), m_queue(pfq), m_stream(stream) {};
     virtual ~RsServerMediaSubsession() {};
 
     // virtual char const* sdpLines() {
@@ -44,14 +47,15 @@ protected:
         const char* auxSDPLine = OnDemandServerMediaSubsession::getAuxSDPLine(rtpSink, inputSource);
         if (auxSDPLine == NULL) auxSDPLine = "";
 
+        rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
         sprintf(privateAuxSDPLine, "%sactive=%s;sensor=%s;type=%u;index=%u;format=%u;bpp=%u\r\na=x-dimensions:%d,%d\r\na=x-framerate: %d\r\n", auxSDPLine, 
-            m_queue->is_streaming() ? "yes" : "no", 
-            m_queue->get_name().c_str(), 
-            m_queue->get_type(), 
-            m_queue->get_index(),             
-            m_queue->get_format(),             
-            m_queue->get_bpp(),             
-            m_queue->get_width(), m_queue->get_height(), m_queue->get_fps());
+            m_queue->is_streaming(m_stream) ? "yes" : "no", 
+            vsp.stream_name().c_str(), 
+            vsp.stream_type(), 
+            vsp.stream_index(),             
+            vsp.format(),             
+            vsp.format() == RS2_FORMAT_Y8 ? 1 : 2,
+            vsp.width(), vsp.height(), vsp.fps());
         return privateAuxSDPLine;
     };
 
@@ -72,7 +76,7 @@ protected:
         RsDeviceSource* rs_source = RsDeviceSource::createNew(envir(), m_queue);
         return LZ4EncodeFilter::createNew(envir(), rs_source);
   #else        
-        return RsDeviceSource::createNew(envir(), m_queue); 
+        return RsDeviceSource::createNew(envir(), m_queue, m_stream); 
   #endif        
 #else
         return RsDeviceSource::createNew(envir(), m_queue);
@@ -101,8 +105,9 @@ protected:
         } else {
             /// RAW
             std::cout << "Using RawVideoRTPSink\n";
+            rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
             return RawVideoRTPSink::createNew(envir(), t_rtpGroupsock, t_rtpPayloadTypeIfDynamic, 
-                m_queue->get_width(), m_queue->get_height(), 8, "YCbCr-4:2:2", "BT709-2");
+                vsp.width(), vsp.height(), 8, "YCbCr-4:2:2", "BT709-2");
         }
     };
 
@@ -110,4 +115,7 @@ private:
     char* m_pAuxSDPLine;
 
     frames_queue* m_queue;
+
+    // rs2::sensor        m_sensor;
+    rs2::stream_profile m_stream;
 };

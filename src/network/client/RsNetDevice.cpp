@@ -144,42 +144,73 @@ void rs_net_sensor::doControl() {
             }
             std::cout << "Connected to " << m_mrl << std::endl;
 
+            // // Prepare profiles list and allocate the queues
+            // m_stream_q.clear();
+            // for (auto stream : m_sw_sensor->get_active_streams()) {
+            //     // ProfileQPair pq(stream, new SafeQueue);
+            //     // m_stream_q.insert(pq);
+            //     m_stream_q[stream] = new SafeQueue;
+            // }
+            
+            // // Start playing streams
+            // m_rtspClient->playStreams(m_stream_q);
+
+            // // Start SW device thread
+            // m_dev_flag = true;
+            // m_dev = std::thread( [&](){ doDevice(); });
+
             // Prepare profiles list and allocate the queues
-            m_stream_q.clear();
-            for (auto stream : m_sw_sensor->get_active_streams()) {
+            m_streams.clear();
+            // m_dev_flag = true;
+            for (auto stream_profile : m_sw_sensor->get_active_streams()) {
                 // ProfileQPair pq(stream, new SafeQueue);
                 // m_stream_q.insert(pq);
-                m_stream_q[stream] = new SafeQueue;
+                rs_net_stream* net_stream = new rs_net_stream();
+                net_stream->profile = stream_profile.as<rs2::video_stream_profile>();
+                net_stream->queue   = new SafeQueue;
+                uint64_t key = slib::profile2key(net_stream->profile.as<rs2::video_stream_profile>());
+                // net_stream->thread = std::thread( [&](){ doDevice(key); });
+                m_streams[key] = net_stream;
             }
             
             // Start playing streams
-            m_rtspClient->playStreams(m_stream_q);
+            m_rtspClient->playStreams(m_streams);
 
-            // Start SW device thread
+            // // Start SW device thread
             m_dev_flag = true;
-            m_dev = std::thread( [&](){ doDevice(); });
+            for (auto ks : m_streams) {
+                rs_net_stream* net_stream = ks.second;
+                net_stream->thread = std::thread( [&](){ doDevice(ks.first); });
+                std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
+            }
+            // m_dev = std::thread( [&](){ doDevice(); });
         } else {
             std::cout << "Sensor disabled\n";
 
             // Stop SW device thread
             m_dev_flag = false;
             std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
-            if (m_dev.joinable()) m_dev.join();
+            // if (m_dev.joinable()) m_dev.join();
+            for (auto ks : m_streams) {
+                auto net_stream = ks.second;
+                if (net_stream->thread.joinable()) net_stream->thread.join();
+            }
 
             // disable running RTP sessions
             m_rtspClient->shutdownStream();
             m_rtspClient = NULL;
 
             // remove the queues and their content
-            for (auto pq : m_stream_q) {
-                auto q = pq.second;
-                while (!q->empty()) {
-                    delete q->front();
-                    q->pop();
+            for (auto ks : m_streams) {
+                auto net_stream = ks.second;
+                while (!net_stream->queue->empty()) {
+                    delete net_stream->queue->front();
+                   net_stream->queue->pop();
                 }
-                delete pq.second;
+                delete net_stream->queue;
+                delete net_stream;
             }
-            m_stream_q.clear();
+            m_streams.clear();
         }
     }
 
@@ -188,108 +219,106 @@ void rs_net_sensor::doControl() {
 
 uint32_t chunks_allocated = 0;
 
-void rs_net_sensor::doDevice() {
+void rs_net_sensor::doDevice(uint64_t key) {
     static uint32_t fps_frame_count = 0;
     static auto beginning = std::chrono::system_clock::now();
 
-    std::cout << m_name << " : SW device support thread started" << std::endl;
+    rs2_video_stream s = slib::key2stream(key);
+    std::cout << m_name << "/" << rs2_stream_to_string(s.type) << "\t: SW device support thread started" << std::endl;
 
     int frame_count = 0; 
     bool prev_sensor_state = false;
 
-    // while (m_eventLoopWatchVariable == 0) {
-    //     if (is_streaming())  
-        while (m_dev_flag) {
-            for (ProfileQPair pqp : m_stream_q) {                
-                if (pqp.second->empty()) continue;
+    while (m_dev_flag) {
+        rs_net_stream* net_stream = m_streams[key];
+        if (net_stream->queue->empty()) continue;
 
-                auto start = std::chrono::system_clock::now();
+        auto start = std::chrono::system_clock::now();
 
-                uint32_t size = 0;
-                uint32_t offset = 0;
-                uint32_t total_size = 0;
+        uint32_t size = 0;
+        uint32_t offset = 0;
+        uint32_t total_size = 0;
 
-                while (offset < FRAME_SIZE) {
-                    // uint8_t* data = 0;
-                    // do {
-                    //     // data = sink->getFrame();
-                    //     data = pqp.second->front();
-                    // } while (data == 0);
-                    uint8_t* data = pqp.second->front();
-                    if (data == NULL) break;
-                    chunk_header_t* ch = (chunk_header_t*)data;
+        while (offset < FRAME_SIZE) {
+            // uint8_t* data = 0;
+            // do {
+            //     // data = sink->getFrame();
+            //     data = pqp.second->front();
+            // } while (data == 0);
+            uint8_t* data = net_stream->queue->front();
+            if (data == NULL) break;
+            chunk_header_t* ch = (chunk_header_t*)data;
 
-                    if (ch->offset < offset) break;
+            if (ch->offset < offset) break;
 
-                    total_size += ch->size;
-                    offset = ch->offset;
-                    int ret = 0;
-                    switch (ch->status & 3) {
-                    case 0:
-                        ret = ch->size - CHUNK_HLEN;
-                        memcpy((void*)(m_frame_raw + offset), (void*)(data + CHUNK_HLEN), ret);
-                        break;
-                    case 1: 
-                        ret = ZSTD_decompress((void*)(m_frame_raw + offset), CHUNK_SIZE, (void*)(data + CHUNK_HLEN), ch->size - CHUNK_HLEN); 
-                        break;
-                    case 2: 
-                        ret = LZ4_decompress_safe((const char*)(data + CHUNK_HLEN), (char*)(m_frame_raw + offset), ch->size - CHUNK_HLEN, CHUNK_SIZE);
-                        ret = ch->size - CHUNK_HLEN;
-                        break;
-                    case 3:
-                        std::cout << "JPEG not implemented yet" << std::endl;
-                        break;
-                    }
-                    size += ret;
-                    // offset += CHUNK_SIZE;
-                    offset += ret;
-
-                    pqp.second->pop();
-                    delete [] data;
-                } 
-
-                uint8_t* frame_raw = new uint8_t[640*480*2];
-                memcpy(frame_raw, m_frame_raw, FRAME_SIZE);
-
-                auto end = std::chrono::system_clock::now();
-                std::chrono::duration<double> elapsed = end - start;
-                std::chrono::duration<double> total_time = end - beginning;
-                fps_frame_count++;
-                double fps;
-                if (total_time.count() > 0) fps = (double)fps_frame_count / (double)total_time.count();
-                else fps = 0;
-                std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) 
-                                                        << elapsed.count() * 1000 << " ms, size " << total_size << " => " << size << ", FPS: " << fps << "\n";                            
-
-                if (total_time > std::chrono::seconds(1)) {
-                    beginning = std::chrono::system_clock::now();
-                    fps_frame_count = 0;
-                }
-
-                // std::cout << "Chunks: " << chunks_allocated << "\n"; 
-
-                if (frame_raw) {
-                    // send it into device
-                    rs2::video_stream_profile sp = pqp.first.as<rs2::video_stream_profile>();
-                    uint32_t bpp = (sp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
-                    m_sw_sensor->on_video_frame(
-                        { 
-                            (void*)frame_raw, 
-                            [] (void* f) { delete [] (uint8_t*)f; }, 
-                            sp.width() * bpp,
-                            bpp,                                                  
-                            (double)time(NULL), 
-                            RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
-                            ++frame_count, 
-                            sp
-                        }
-                    );
-                }
+            total_size += ch->size;
+            offset = ch->offset;
+            int ret = 0;
+            switch (ch->status & 3) {
+            case 0:
+                ret = ch->size - CHUNK_HLEN;
+                memcpy((void*)(net_stream->m_frame_raw + offset), (void*)(data + CHUNK_HLEN), ret);
+                break;
+            case 1: 
+                ret = ZSTD_decompress((void*)(net_stream->m_frame_raw + offset), CHUNK_SIZE, (void*)(data + CHUNK_HLEN), ch->size - CHUNK_HLEN); 
+                break;
+            case 2: 
+                ret = LZ4_decompress_safe((const char*)(data + CHUNK_HLEN), (char*)(net_stream->m_frame_raw + offset), ch->size - CHUNK_HLEN, CHUNK_SIZE);
+                ret = ch->size - CHUNK_HLEN;
+                break;
+            case 3:
+                std::cout << "JPEG not implemented yet" << std::endl;
+                break;
             }
-        }
-    // }
+            size += ret;
+            // offset += CHUNK_SIZE;
+            offset += ret;
 
-    std::cout << m_name << " : SW device support thread exited" << std::endl;
+            net_stream->queue->pop();
+            delete [] data;
+        } 
+
+        uint8_t* frame_raw = new uint8_t[640*480*2];
+        memcpy(frame_raw, net_stream->m_frame_raw, FRAME_SIZE);
+
+        auto end = std::chrono::system_clock::now();
+        std::chrono::duration<double> elapsed = end - start;
+        std::chrono::duration<double> total_time = end - beginning;
+        fps_frame_count++;
+        double fps;
+        if (total_time.count() > 0) fps = (double)fps_frame_count / (double)total_time.count();
+        else fps = 0;
+        std::cout << "Frame decompression time " << std::fixed << std::setw(5) << std::setprecision(2) 
+                                                << elapsed.count() * 1000 << " ms, size " << total_size << " => " << size << ", FPS: " << fps << "\n";                            
+
+        if (total_time > std::chrono::seconds(1)) {
+            beginning = std::chrono::system_clock::now();
+            fps_frame_count = 0;
+        }
+
+        // std::cout << "Chunks: " << chunks_allocated << "\n"; 
+
+        if (frame_raw) {
+            // send it into device
+            rs2::video_stream_profile sp = net_stream->profile.as<rs2::video_stream_profile>();
+            uint32_t bpp = (sp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
+            m_sw_sensor->on_video_frame(
+                { 
+                    (void*)frame_raw, 
+                    [] (void* f) { delete [] (uint8_t*)f; }, 
+                    sp.width() * bpp,
+                    bpp,                                                  
+                    (double)time(NULL), 
+                    RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
+                    ++frame_count, 
+                    sp
+                }
+            );
+        }
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(std::rand()%10)); 
+    std::cout << m_name << "/" << rs2_stream_to_string(s.type) << "\t: SW device support thread exited" << std::endl;
 }
 
 rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_address)
@@ -341,9 +370,7 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
                 pos = sensor.find("|");
                 uint64_t key = atol(sensor.substr(0, pos).c_str());
                 sensor.erase(0, pos + 1);
-
-                rs2_video_stream stream = slib::key2stream(key);
-                netsensor->add_profile(stream);
+                netsensor->add_profile(key);
             }
 
             sensors.emplace_back(netsensor);
@@ -413,7 +440,7 @@ void RSRTSPClient::prepareSession() {
     UsageEnvironment& env = envir(); // alias
 
     // Create a media session object from this SDP description:
-    std::cout << "SDP description:\n" << m_sdp << "\n";
+    // std::cout << "SDP description:\n" << m_sdp << "\n";
     m_session = RsMediaSession::createNew(env, m_sdp.c_str());
 
     if (m_session == NULL) {
@@ -433,10 +460,10 @@ void RSRTSPClient::prepareSession() {
 
 void RSRTSPClient::playSession() {
     // setup streams first
-    if (m_pqm_it == NULL) m_pqm_it = new ProfileQMap::iterator(m_pqm.begin());
+    if (m_streams_it == NULL) m_streams_it = new std::map<uint64_t, rs_net_stream*>::iterator(m_streams.begin());
 
-    while (*m_pqm_it != m_pqm.end()) {
-        rs2::video_stream_profile stream = (*m_pqm_it)->first.as<rs2::video_stream_profile>();
+    while (*m_streams_it != m_streams.end()) {
+        rs2::video_stream_profile stream = (*m_streams_it)->second->profile.as<rs2::video_stream_profile>();
 
         std::cout << " Stream : " << std::setw(15) << rs2_stream_to_string(stream.stream_type()) 
                                     << std::setw(15) << rs2_format_to_string(stream.format())      
@@ -488,8 +515,8 @@ void RSRTSPClient::playSession() {
         if (!profile_found) envir() << "Cannot match a profile\n";
     }
 
-    delete m_pqm_it;
-    m_pqm_it = NULL;
+    delete m_streams_it;
+    m_streams_it = NULL;
 
     sendPlayCommand(*m_session, continueAfterPLAY);
 }
@@ -507,7 +534,7 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
     // Having successfully setup the subsession, create a data sink for it, and call "startPlaying()" on it.
     // (This will prepare the data sink to receive data; the actual flow of data from the client won't start happening until later,
     // after we've sent a RTSP "PLAY" command.)
-    m_subsession->sink = RSSink::createNew(env, *m_subsession, url(), (*m_pqm_it)->second, m_subsession->videoWidth() * m_subsession->videoHeight() * m_subsession->videoFPS());
+    m_subsession->sink = RSSink::createNew(env, *m_subsession, url(), (*m_streams_it)->second->queue, m_subsession->videoWidth() * m_subsession->videoHeight() * m_subsession->videoFPS());
 
     // do not wait for the out of order packets
     // m_scs.subsession->rtpSource()->setPacketReorderingThresholdTime(0); 
@@ -525,12 +552,12 @@ void RSRTSPClient::continueAfterSETUP(int resultCode, char* resultString)
     }
 
     // setup the remainded streams
-    (*m_pqm_it)++;
+    (*m_streams_it)++;
     playSession();
 }
 
-void RSRTSPClient::playStreams(ProfileQMap pqm) {
-    m_pqm = pqm;
+void RSRTSPClient::playStreams(std::map<uint64_t, rs_net_stream*> streams) {
+    m_streams = streams;
     sendDescribeCommand(RSRTSPClient::continueAfterDESCRIBE);
 }
 

@@ -122,12 +122,54 @@ public:
         RsRTSPServer& m_parent;
     };
 
+    class RsRTSPClientSession: public RTSPServer::RTSPClientSession {
+    protected:
+        RsRTSPClientSession(RsRTSPServer& ourServer, u_int32_t sessionId)
+                    : RTSPServer::RTSPClientSession(ourServer, sessionId), m_parent(ourServer) {};
+        virtual ~RsRTSPClientSession() {};    
+
+        friend class RsRTSPServer;
+
+        // virtual void handleCmd_SETUP(RTSPClientConnection* ourClientConnection, char const* urlPreSuffix, char const* urlSuffix, char const* fullRequestStr) {
+        //     std::cout << "SETUP command..." << std::endl;
+        //     RTSPServer::RTSPClientSession::handleCmd_SETUP(ourClientConnection, urlPreSuffix, urlSuffix, fullRequestStr);
+        //     std::cout << "...for " << urlSuffix << std::endl;
+
+        //     for (int trackNum = 0; trackNum < fNumStreamStates; ++trackNum) {
+        //         auto subsession = fStreamStates[trackNum].subsession;
+        //         if (subsession != NULL && strcmp(urlSuffix, subsession->trackId()) == 0) {
+        //             // got the subsession
+        //         }
+        //     }
+
+        // };
+
+        virtual void handleCmd_PLAY(RTSPClientConnection* ourClientConnection, ServerMediaSubsession* subsession, char const* fullRequestStr) {
+            std::cout << "PLAY command" << std::endl;
+            RTSPServer::RTSPClientSession::handleCmd_PLAY(ourClientConnection, subsession, fullRequestStr);
+        };
+
+        virtual void handleCmd_TEARDOWN(RTSPClientConnection* ourClientConnection, ServerMediaSubsession* subsession) {
+            std::cout << "TEARDOWN command" << std::endl;
+            RTSPServer::RTSPClientSession::handleCmd_TEARDOWN(ourClientConnection, subsession);
+        };
+
+    private:
+        RsRTSPServer& m_parent;
+    };
+     
 protected: // redefined virtual functions
     friend class RsRTSPClientConnection;
+    friend class RsRTSPClientSession;
 
     virtual ClientConnection* createNewClientConnection(int clientSocket, struct sockaddr_storage const& clientAddr) {
         return new RsRTSPClientConnection(*this, clientSocket, clientAddr);
     }
+
+    virtual ClientSession* createNewClientSession(u_int32_t sessionId) {
+        return new RsRTSPClientSession(*this, sessionId);
+    };
+
 
 private:
     std::string m_list; // cameras served by server

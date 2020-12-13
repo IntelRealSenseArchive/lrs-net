@@ -113,67 +113,6 @@ private:
     char* fStreamId;
 };
 
-class rs_net_sensor {
-public: 
-    rs_net_sensor(rs2::software_device device, std::string name)
-        : m_sw_device(device), m_name(name), m_streaming(false), m_dev_flag(false) 
-    {
-        m_eventLoopWatchVariable = 0;
-
-        m_sw_sensor = std::make_shared<rs2::software_sensor>(m_sw_device.add_sensor(m_name));
-        m_frame_raw = new uint8_t[640*480*2];
-    };
-
-    ~rs_net_sensor() {
-        if (m_frame_raw) delete [] m_frame_raw;
-    };
-
-    void set_mrl(std::string mrl) { m_mrl  = mrl; };
-    void add_profile(rs2_video_stream stream) { 
-        StreamProfile sp = std::make_shared<rs2::video_stream_profile>(m_sw_sensor->add_video_stream(stream, false));
-    };
-
-    bool is_streaming() { return m_sw_sensor->get_active_streams().size() > 0; };
-
-    void start() {
-        m_rtp = std::thread( [&](){ doRTP(); });
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
-        // m_dev = std::thread( [&](){ doDevice(); });
-        // std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
-    };
-
-    void doRTP();
-    static void doControl(void* clientData) {
-        rs_net_sensor* sensor = (rs_net_sensor*)clientData;
-        sensor->doControl(); 
-    };
-    void doControl();
-    void doDevice();
-
-private:    
-    rs2::software_device m_sw_device;
-
-    std::string    m_name;
-    std::string    m_mrl;
-
-    SoftSensor     m_sw_sensor;
-    ProfileQMap    m_stream_q;
-
-    std::thread    m_rtp;
-    std::thread    m_dev;
-    volatile bool  m_dev_flag;
-
-    RSRTSPClient*  m_rtspClient;
-    char m_eventLoopWatchVariable;
-
-    uint8_t* m_frame_raw;
-
-    bool m_streaming;
-
-    UsageEnvironment* m_env;
-};
-using NetSensor = std::shared_ptr<rs_net_sensor>;
-
 // #define COMPRESSION_ENABLED
 // #define COMPRESSION_ZSTD
 
@@ -193,31 +132,165 @@ class slib {
 public:
     slib() {};
    ~slib() {};
-    
-    static uint64_t profile2key(rs2::video_stream_profile stream) {
-        return 
-            ((uint64_t)stream.stream_type()  & 0x00FF) << 56 | 
-            ((uint64_t)stream.stream_index() & 0x00FF) << 48 | 
-            ((uint64_t)stream.width()        & 0xFFFF) << 32 | 
-            ((uint64_t)stream.height()       & 0xFFFF) << 16 | 
-            ((uint64_t)stream.fps()          & 0x00FF) <<  8 | 
-            ((uint64_t)stream.format()       & 0x00FF); 
+
+    static uint64_t profile2key(rs2::video_stream_profile profile) {
+        convert_t t;
+
+        t.values.def    = profile.is_default();
+        t.values.type   = profile.stream_type();  
+        t.values.index  = profile.stream_index(); 
+        t.values.uid    = profile.unique_id();    
+        t.values.width  = profile.width();        
+        t.values.height = profile.height();       
+        t.values.fps    = profile.fps();          
+        t.values.format = profile.format();
+
+        return t.key;
+    };
+
+    static uint64_t stream2key(rs2_video_stream stream) {
+        convert_t t;
+
+        t.values.type   = stream.type;  
+        t.values.index  = stream.index; 
+        t.values.uid    = stream.uid;    
+        t.values.width  = stream.width;        
+        t.values.height = stream.height;       
+        t.values.fps    = stream.fps;          
+        t.values.format = stream.fmt;
+
+        return t.key;
     };
 
     static rs2_video_stream key2stream(uint64_t key) {
+        convert_t t;
+        t.key = key;
+
         rs2_video_stream stream;
-        stream.type   = (rs2_stream)(key >> 56);
-        stream.index  = key << 8  >> 56;
-        stream.width  = key << 16 >> 48;
-        stream.height = key << 32 >> 48;
-        stream.fps    = key << 48 >> 56;
-        stream.fmt    = (rs2_format)(key << 56 >> 56);
+        stream.type   = (rs2_stream)t.values.type;
+        stream.index  = t.values.index;
+        stream.uid    = t.values.uid;
+        stream.width  = t.values.width;
+        stream.height = t.values.height;
+        stream.fps    = t.values.fps;
+        stream.fmt    = (rs2_format)t.values.format;
 
         stream.bpp    = (stream.type == RS2_STREAM_INFRARED) ? 1 : 2;
 
         return stream;
     };
+
+    static bool is_default(uint64_t key) {
+        return key >> 60;
+    };
+
+    static uint64_t strip_default(uint64_t key) {
+        return key & 0x0FFFFFFFFFFFFFFF;
+    };
+
+private:
+#pragma pack (push, 1)
+    typedef union convert {
+        uint64_t key;
+        struct vals {
+            uint8_t  def   : 4;
+            uint8_t  type  : 4;
+            uint8_t  index : 4;
+            uint8_t  uid   : 4;
+            uint16_t width ;
+            uint16_t height;
+            uint8_t  fps   ;
+            uint8_t  format;
+        } values;
+    } convert_t;
+#pragma pack(pop)
+
+    static const uint64_t MASK_DEFAULT = 0xF000000000000000;
+    static const uint64_t MASK_TYPE    = 0x0F00000000000000;
+    static const uint64_t MASK_INDEX   = 0x00F0000000000000;
+    static const uint64_t MASK_UID     = 0x000F000000000000;
+    static const uint64_t MASK_WIDTH   = 0x0000FFFF00000000;
+    static const uint64_t MASK_HEIGHT  = 0x00000000FFFF0000;
+    static const uint64_t MASK_FPS     = 0x000000000000FF00;
+    static const uint64_t MASK_FORMAT  = 0x00000000000000FF;    
 };
+
+class rs_net_stream {
+public:
+    rs_net_stream() {
+        m_frame_raw = new uint8_t[640*480*2];
+    };
+    ~rs_net_stream() {
+        if (m_frame_raw) delete [] m_frame_raw;
+    };
+
+    rs2_video_stream     stream;
+    rs2::stream_profile  profile;
+    SafeQueue*           queue;
+    std::thread          thread;
+
+    uint8_t*             m_frame_raw;
+};
+
+class rs_net_sensor {
+public: 
+    rs_net_sensor(rs2::software_device device, std::string name)
+        : m_sw_device(device), m_name(name), m_streaming(false), m_dev_flag(false), m_eventLoopWatchVariable(0)
+    {
+        m_sw_sensor = std::make_shared<rs2::software_sensor>(m_sw_device.add_sensor(m_name));
+    };
+
+    ~rs_net_sensor() {};
+
+    void set_mrl(std::string mrl) { m_mrl  = mrl; };
+    void add_profile(uint64_t key) { 
+        StreamProfile sp = std::make_shared<rs2::video_stream_profile>(m_sw_sensor->add_video_stream(slib::key2stream(key), slib::is_default(key)));
+
+        // rs_net_stream* ns = new rs_net_stream;
+        // ns->stream  = slib::key2stream(key);
+        // ns->profile = std::make_shared<rs2::video_stream_profile>(m_sw_sensor->add_video_stream(ns->stream, slib::is_default(key)));
+        // ns->queue   = new SafeQueue();
+
+        // m_streams[slib::strip_default(key)] = ns;
+    };
+
+    bool is_streaming() { return m_sw_sensor->get_active_streams().size() > 0; };
+
+    void start() {
+        m_rtp = std::thread( [&](){ doRTP(); });
+    };
+
+    void doRTP();
+    static void doControl(void* clientData) {
+        rs_net_sensor* sensor = (rs_net_sensor*)clientData;
+        sensor->doControl(); 
+    };
+    void doControl();
+    void doDevice(uint64_t key);
+
+private:    
+    rs2::software_device m_sw_device;
+
+    std::string    m_name;
+    std::string    m_mrl;
+
+    SoftSensor     m_sw_sensor;
+    ProfileQMap    m_stream_q;
+
+    std::map<uint64_t, rs_net_stream*> m_streams;
+
+    std::thread    m_rtp;
+    // std::thread    m_dev;
+    volatile bool  m_dev_flag;
+
+    RSRTSPClient*  m_rtspClient;
+    char m_eventLoopWatchVariable;
+
+    bool m_streaming;
+
+    UsageEnvironment* m_env;
+};
+using NetSensor = std::shared_ptr<rs_net_sensor>;
 
 class RSRTSPClient : public RTSPClient {
 public:
@@ -232,7 +305,9 @@ protected:
     virtual ~RSRTSPClient() {};
 
 public:
-    void playStreams(ProfileQMap pqm);
+    void playStreams(std::map<uint64_t, rs_net_stream*> streams);
+
+    // void playStreams(ProfileQMap pqm);
     void shutdownStream();
 
     void prepareSession();
@@ -259,6 +334,9 @@ private:
 
     ProfileQMap m_pqm;
     ProfileQMap::iterator* m_pqm_it;
+
+    std::map<uint64_t, rs_net_stream*> m_streams;
+    std::map<uint64_t, rs_net_stream*>::iterator* m_streams_it;
 };
 
 class rs_net_device

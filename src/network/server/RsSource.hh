@@ -18,24 +18,43 @@
 class RsDeviceSource : public FramedSource
 {
 public:
-    static RsDeviceSource* createNew(UsageEnvironment& t_env, frames_queue* pqs) {
-        return new RsDeviceSource(t_env, pqs);
+    static RsDeviceSource* createNew(UsageEnvironment& t_env, frames_queue* pfq, rs2::stream_profile stream) {
+        return new RsDeviceSource(t_env, pfq, stream);
     };
 
     virtual char const* MIMEtype() const { return "video/LZ4"; };
 
 protected:
-    RsDeviceSource(UsageEnvironment& t_env, frames_queue* pqs) : FramedSource(t_env), m_pqs(pqs) {};
+    RsDeviceSource(UsageEnvironment& t_env, frames_queue* pfq, rs2::stream_profile stream) 
+        : FramedSource(t_env), m_queue(pfq), m_stream(stream) 
+    {
+        m_queue->addStream(m_stream);
 
-    virtual ~RsDeviceSource() {};
+        rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
+        std::cout << "Source for " << m_queue->get_name() << " started for stream: " 
+                << std::setw(15) << vsp.stream_type()
+                << std::setw(15) << rs2_format_to_string(vsp.format())      
+                << std::setw(15) << vsp.width() << "x" << vsp.height() << "x" << vsp.fps() << std::endl;    
+    };
+
+    virtual ~RsDeviceSource() 
+    {
+        m_queue->delStream(m_stream);
+
+        rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
+        std::cout << "Source for " << m_queue->get_name() << " stopped for stream: " 
+                << std::setw(15) << vsp.stream_type()
+                << std::setw(15) << rs2_format_to_string(vsp.format())      
+                << std::setw(15) << vsp.width() << "x" << vsp.height() << "x" << vsp.fps() << std::endl;    
+    };
 
 protected:
-    virtual void doStopGettingFrames() { FramedSource::doStopGettingFrames(); m_pqs->stop((void*)this); };
+    virtual void doStopGettingFrames() { FramedSource::doStopGettingFrames(); m_queue->stop((void*)this); };
 
 private:
     virtual void doGetNextFrame() {
         if (isCurrentlyAwaitingData()) {
-            FrameData frame = m_pqs->get_frame((void*)this);
+            FrameData frame = m_queue->get_frame((void*)this, m_stream);
             if (frame != nullptr) {
                 // we have got the data
                 gettimeofday(&fPresentationTime, NULL); // If you have a more accurate time - e.g., from an encoder - then use that instead.
@@ -64,5 +83,8 @@ private:
 
 
 private:
-    frames_queue* m_pqs;
+    frames_queue*       m_queue;
+
+    // rs2::sensor         m_sensor;
+    rs2::stream_profile m_stream;
 };

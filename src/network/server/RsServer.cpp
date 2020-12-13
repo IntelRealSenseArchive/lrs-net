@@ -59,6 +59,8 @@ server::server(rs2::device dev, std::string addr, int port)
 
     // ServerMediaSession* sms = ServerMediaSession::createNew(*env, "", m_name.c_str(), "Session streamed by LRS-Net");
     for (rs2::sensor sensor : dev.query_sensors()) {
+        frames_queue* pfq = new frames_queue(sensor);
+
         std::string sensor_name(sensor.supports(RS2_CAMERA_INFO_NAME) ? sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
 
         std::cout << "Sensor\t: " << sensor_name.c_str();
@@ -84,18 +86,12 @@ server::server(rs2::device dev, std::string addr, int port)
                 // if (stream.fps() == 30)
                 {
                     if (stream.width() == 640 && stream.height() == 480) {
-                        // sms->addSubsession(RsServerMediaSubsession::createNew(*env, sensor, stream));
-                        frames_queue* psq = new frames_queue(sensor, stream);
-                        sms->addSubsession(RsServerMediaSubsession::createNew(*env, psq));
+                        sms->addSubsession(RsServerMediaSubsession::createNew(*env, pfq, stream));
+                        // frames_queue* psq = new frames_queue(sensor, stream);
+                        // sms->addSubsession(RsServerMediaSubsession::createNew(*env, psq));
                         // supported_stream_profiles.push_back(stream);
                         std::cout << "ACCEPTED" << std::endl;
-                        uint64_t stream_key = 
-                            ((uint64_t)stream.stream_type()  & 0x00FF) << 56 | 
-                            ((uint64_t)stream.stream_index() & 0x00FF) << 48 | 
-                            ((uint64_t)stream.width()        & 0xFFFF) << 32 | 
-                            ((uint64_t)stream.height()       & 0xFFFF) << 16 | 
-                            ((uint64_t)stream.fps()          & 0x00FF) <<  8 | 
-                            ((uint64_t)stream.format()       & 0x00FF); 
+                        uint64_t stream_key = slib::profile2key(stream);
                         stream_keys += "|" + std::to_string(stream_key);
                         continue;
                     }
