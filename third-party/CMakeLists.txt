@@ -29,21 +29,7 @@ if(BUILD_NETWORK_DEVICE)
           "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
         UPDATE_COMMAND ""
         PATCH_COMMAND  ""
-   )
-
-    ### OpenJPEG ########################################################
-    ExternalProject_Add (openjpeg
-        PREFIX openjpeg
-        GIT_REPOSITORY "https://github.com/uclouvain/openjpeg.git"
-        GIT_TAG "master"
-        SOURCE_DIR "${CMAKE_BINARY_DIR}/third-party/openjpeg"
-        CMAKE_ARGS "-DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/openjpeg"
-          "-DCMAKE_GENERATOR=${CMAKE_GENERATOR}"
-          "-DCMAKE_POSITION_INDEPENDENT_CODE=ON"
-          "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
-        UPDATE_COMMAND ""
-        PATCH_COMMAND  ""
-   )
+    )
 
     ### ZSTD ############################################################
     ExternalProject_Add (zstd
@@ -58,6 +44,6 @@ if(BUILD_NETWORK_DEVICE)
           "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
         UPDATE_COMMAND ""
         PATCH_COMMAND  ""
-   )
+    )
 
 endif()

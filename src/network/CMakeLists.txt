@@ -15,93 +15,35 @@ add_definitions(-D_WINSOCKAPI_ -DNEWLOCALE_NOT_USED=1 -DBSD=1 -DSOCKLEN_T=sockle
 #target_compile_definitions(${PROJECT_NAME} PUBLIC RESPONSE_BUFFER_SIZE=100000)
 
 set(RS_CLIENT_NET_CPP
-#    ./client/RsMediaSession.cpp
-#    ./client/RsMediaSession.h
-    ./client/RsNetDevice.cpp
-    ./client/RsNetDevice.h
-#    ./client/RsRtpCallback.h
-#    ./client/RsRtpStream.h
-#    ./client/RsRtsp.h
-#    ./client/RsRtspClient.cpp
-#    ./client/RsRtspClient.h
-#    ./client/RsSink.cpp
-#    ./client/RsSink.h
-
-    # ./common/LZ4DecodeFilter.h
-    # ./common/LZ4DecodeFilter.cpp
-    # ./common/JPEGDecodeFilter.h
-    # ./common/JPEGDecodeFilter.cpp
-    # ./common/JPEG2000DecodeFilter.h
-    # ./common/JPEG2000DecodeFilter.cpp
-    ./common/LZ4VideoRTPSource.h
-    ./common/LZ4VideoRTPSource.cpp
-)
-
-set(RS_COMMON_NET_CPP
-    # ./common/RsCommon.h
-    # ./common/RsUsageEnvironment.cpp
-    # ./common/RsUsageEnvironment.h
-
-    # ./common/jpeg2k.h
-    # ./common/jpeg2k.cpp
-
-    # ./common/jpeg.h
-    # ./common/jpeg.cpp
-
-    # ./common/if_lz4.h
-    # ./common/if_lz4.cpp
+    ./RsNetDevice.cpp
+    ./RsNetDevice.h
+    ./RsVideoRTPSource.h
+    ./RsVideoRTPSource.cpp
 )
 
 set(RS_COMP_NET_CPP
-    # ./compression/CompressionFactory.cpp
-    # ./compression/CompressionFactory.h
-    # ./compression/ICompression.h
-    # ./compression/JpegCompression.cpp
-    # ./compression/JpegCompression.h
-    # ./compression/Lz4Compression.cpp
-    # ./compression/Lz4Compression.h
-    # ./compression/RvlCompression.cpp
-    # ./compression/RvlCompression.h
     ${LZ4_DIR}/lz4.h 
     ${LZ4_DIR}/lz4.c
 )
 
 set(RS_SERVER_NET_CPP
-#    ./server/RsDevice.cpp
-#    ./server/RsDevice.hh
-#    ./server/RsRTSPServer.cpp
-#    ./server/RsRTSPServer.hh
-#    ./server/RsSensor.cpp
-#    ./server/RsSensor.hh
-    ./server/RsServer.cpp
-    ./server/RsServer.h
-#    ./server/RsServerMediaSession.cpp
-#    ./server/RsServerMediaSession.h
-#    ./server/RsServerMediaSubsession.cpp
-    ./server/RsServerMediaSubsession.h
-#    ./server/RsSimpleRTPSink.cpp
-#    ./server/RsSimpleRTPSink.h
-#    ./server/RsSource.cpp
-    ./server/RsSource.hh
-
-    # ./common/LZ4EncodeFilter.h
-    # ./common/LZ4EncodeFilter.cpp
-    # ./common/JPEGEncodeFilter.h
-    # ./common/JPEGEncodeFilter.cpp
-    # ./common/JPEG2000EncodeFilter.h
-    # ./common/JPEG2000EncodeFilter.cpp
-
-    ./common/LZ4VideoRTPSink.h
-    ./common/LZ4VideoRTPSink.cpp
+    ./RsServer.cpp
+    ./RsServer.h
+    ./RsServerMediaSubsession.h
+    ./RsSensor.h
+    ./RsSource.h
+    ./RsVideoRTPSink.h
+    ./RsVideoRTPSink.cpp
 )
 
 set(REALSENSE_NET_CPP 
     ${RS_CLIENT_NET_CPP} 
-    ${RS_COMMON_NET_CPP} 
     ${RS_COMP_NET_CPP} 
     ${RS_SERVER_NET_CPP}
     rs_net.cpp
 )
+
+list(APPEND REALSENSE_NET_CPP ${CMAKE_SOURCE_DIR}/third-party/cpp-httplib/httplib.h)
 
 set(LIVE ${CMAKE_BINARY_DIR}/third-party/live)
 file(GLOB LIVE555_CPP
@@ -123,10 +65,6 @@ add_dependencies(${PROJECT_NAME}
     libjpeg-turbo
 )
 
-add_dependencies(${PROJECT_NAME} 
-    openjpeg
-)
-
 set(REALSENSE_NET_PUBLIC_HEADERS
     ${CMAKE_SOURCE_DIR}/include/librealsense2-net/rs_net.h
     ${CMAKE_SOURCE_DIR}/include/librealsense2-net/rs_net.hpp
@@ -136,18 +74,14 @@ set(CMAKECONFIG_NET_INSTALL_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 
 include_directories(${PROJECT_NAME}
     ./
-    ./common
-    ./client
-    ./server
-    ./compression
 
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/common
+    ${CMAKE_SOURCE_DIR}/third-party/cpp-httplib
     # ${CMAKE_SOURCE_DIR}/third-party/easyloggingpp/src
     ${CMAKE_SOURCE_DIR}/third-party/tclap/include
 
     ${CMAKE_BINARY_DIR}/libjpeg-turbo/include
-    ${CMAKE_BINARY_DIR}/openjpeg/include/openjpeg-2.3
 
     ${CMAKE_BINARY_DIR}/zstd/include
     ${LZ4_DIR}
@@ -186,14 +120,13 @@ if(WIN32)
     set(ZSTDLIB "${CMAKE_BINARY_DIR}/zstd/lib/zstd_static.lib")
 else(WIN32)
     set(JPGLIB      "${CMAKE_BINARY_DIR}/libjpeg-turbo/lib/libturbojpeg.a")
-    # set(OPENJPEGLIB "${CMAKE_BINARY_DIR}/openjpeg/lib/libopenjp2.a")
     set(ZSTDLIB     "${CMAKE_BINARY_DIR}/zstd/lib/libzstd.a")
 endif(WIN32)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
 
 target_link_libraries(${PROJECT_NAME} 
-    PRIVATE ${WINLIB} ${JPGLIB} ${OPENJPEGLIB} ${ZSTDLIB} realsense2 Threads::Threads
+    PRIVATE ${WINLIB} ${JPGLIB} ${ZSTDLIB} realsense2 Threads::Threads
 )
 
 set_target_properties(${PROJECT_NAME} PROPERTIES FOLDER Library)
