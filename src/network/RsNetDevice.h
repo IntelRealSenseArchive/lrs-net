@@ -360,7 +360,7 @@ public:
 
 protected:
     RSRTSPClient(UsageEnvironment& env, char const* rtspURL)
-        : RTSPClient(env, rtspURL, 0, "", 0, -1), m_pqm_it(NULL) {}
+        : RTSPClient(env, rtspURL, 0, "", 0, -1), m_streams_it(NULL) {}
 
     virtual ~RSRTSPClient() {};
 
@@ -390,9 +390,6 @@ private:
     MediaSubsession* m_subsession;
 
     std::string m_sdp;
-
-    ProfileQMap m_pqm;
-    ProfileQMap::iterator* m_pqm_it;
 
     std::map<uint64_t, rs_net_stream*> m_streams;
     std::map<uint64_t, rs_net_stream*>::iterator* m_streams_it;
