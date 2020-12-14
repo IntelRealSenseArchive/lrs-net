@@ -1,5 +1,6 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2020 Intel Corporation. All Rights Reserved.
+#include <httplib.h>
 
 #include <signal.h>
 
@@ -20,8 +21,6 @@
 
 #include "tclap/CmdLine.h"
 #include "tclap/ValueArg.h"
-
-#include <httplib.h>
 
 using namespace TCLAP;
 

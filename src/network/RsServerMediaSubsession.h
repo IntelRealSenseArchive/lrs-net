@@ -43,12 +43,16 @@ protected:
         const char* auxSDPLine = OnDemandServerMediaSubsession::getAuxSDPLine(rtpSink, inputSource);
         if (auxSDPLine == NULL) auxSDPLine = "";
 
-        // rs2::video_stream_profile vsp = m_stream.as<rs2::video_stream_profile>();
-        sprintf(privateAuxSDPLine, "%sactive=%s;keyhi=%u;keylo=%u\r\n", auxSDPLine, 
-            m_queue->is_streaming(m_stream) ? "yes" : "no", 
-            (slib::profile2key(m_stream) & 0xFFFFFFFF00000000) >> 32,
-            slib::profile2key(m_stream) & 0x00000000FFFFFFFF
+        sprintf(privateAuxSDPLine, "%sactive=%s;key=%llu\r\n", auxSDPLine, 
+            m_queue->is_streaming(m_stream) ? "yes" : "no", slib::profile2key(m_stream)
         );
+
+        // std::stringstream ss;
+        // ss << auxSDPLine << "active=";
+        // if (m_queue->is_streaming(m_stream)) ss << "yes";
+        // else ss << "no";
+        // ss << ";key=" << slib::profile2key(m_stream) << "\r\n";
+
         return privateAuxSDPLine;
     };
 

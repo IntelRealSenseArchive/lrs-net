@@ -1,5 +1,6 @@
 // License: Apache 2.0. See LICENSE file in root directory.
 // Copyright(c) 2020 Intel Corporation. All Rights Reserved.
+#include <httplib.h>
 
 #include "liveMedia.hh"
 #include "BasicUsageEnvironment.hh"
@@ -21,8 +22,6 @@
 #include <zstd_errors.h>
 
 #include <lz4.h>
-
-#include <httplib.h>
 
 #include <stdlib.h>
 
@@ -297,7 +296,7 @@ void rs_net_sensor::doDevice(uint64_t key) {
         // send it into device
         if (net_stream->profile.is<rs2::video_stream_profile>()) {
             rs2::video_stream_profile vsp = net_stream->profile.as<rs2::video_stream_profile>();
-            uint32_t bpp = (vsp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
+            int bpp = (vsp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
             m_sw_sensor->on_video_frame(
                 { 
                     (void*)frame_raw, 
@@ -377,7 +376,7 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
 
             while (!sensor.empty()) {
                 pos = sensor.find("|");
-                uint64_t key = atol(sensor.substr(0, pos).c_str());
+                uint64_t key = std::stoull(sensor.substr(0, pos).c_str());
                 sensor.erase(0, pos + 1);
                 netsensor->add_profile(key);
             }
@@ -474,15 +473,15 @@ void RSRTSPClient::playSession() {
     while (*m_streams_it != m_streams.end()) {
         rs2::stream_profile profile = (*m_streams_it)->second->profile;
         uint64_t profile_key = slib::profile2key(profile);
-        std::cout << slib::print_profile(profile) << std::endl;
 
         bool profile_found = false;
-
         MediaSubsessionIterator it(*m_session);
-        std::cout << "Looking  for " << profile_key << std::endl;
+
+        std::cout << "Looking  for " << profile_key << "\t" << slib::print_profile(profile) << std::endl;
         while (m_subsession = it.next()) {
-            uint64_t subsession_key = (uint64_t)m_subsession->attrVal_unsigned("keyhi") << 32 | m_subsession->attrVal_unsigned("keylo");
-            std::cout << "Checking for " << subsession_key << std::endl;
+            uint64_t subsession_key = std::stoull(m_subsession->attrVal_str("key"));
+            rs2_video_stream vs = slib::key2stream(subsession_key);
+            std::cout << "Checking for " << subsession_key << "\t" << slib::print_stream(&vs) << std::endl;
             if (profile_key == subsession_key) {
                 std::cout << "Profile match for " << m_subsession->controlPath() << std::endl;
                 profile_found = true;
@@ -512,8 +511,7 @@ void RSRTSPClient::playSession() {
                 }
             }
         }
-        if (!profile_found) envir() << "Cannot match a profile\n";
-        throw std::runtime_error("Cannot match a profile");
+        if (!profile_found) throw std::runtime_error("Cannot match a profile");
     }
 
     delete m_streams_it;

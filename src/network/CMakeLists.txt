@@ -103,15 +103,16 @@ if(WIN32)
     # #  define ssize_t long
     # #endif
     #
-    if("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
-            # 64-bit environment...
-            message(STATUS "Target is 64 bits")
-            add_definitions(-Dssize_t=__int64)
-    else("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
-            # 32-bit environment...
-            message(STATUS "Target is 32 bits")
-            add_definitions(-Dssize_t=long)
-    endif("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
+
+    # if("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
+    #         # 64-bit environment...
+    #         message(STATUS "Target is 64 bits")
+    #         add_definitions(-Dssize_t=__int64)
+    # else("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
+    #         # 32-bit environment...
+    #         message(STATUS "Target is 32 bits")
+    #         add_definitions(-Dssize_t=long)
+    # endif("${CMAKE_SIZEOF_VOID_P}" EQUAL "8")
 
     # add_definitions(-DELPP_WINSOCK2)
         

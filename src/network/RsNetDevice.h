@@ -132,6 +132,38 @@ public:
         return ss.str();
     };
 
+    static std::string print_stream(rs2_video_stream* pstream) {
+        rs2_motion_stream* pmstream = (rs2_motion_stream*)pstream;
+
+        std::stringstream ss;
+        std::stringstream vss;
+
+        switch (pstream->type) {
+        case RS2_STREAM_DEPTH    :
+        case RS2_STREAM_COLOR    :
+        case RS2_STREAM_INFRARED :
+        case RS2_STREAM_FISHEYE  :
+            ss << std::setw(10) << pstream->type << std::setw(2);
+            if (pstream->index) ss << pstream->index;
+            else ss << "";
+            ss << std::setw(15) << rs2_format_to_string(pstream->fmt);
+            vss << pstream->width << "x" << pstream->height;
+            ss << std::setw(10) << vss.str() << ":" << pstream->fps;
+            break;
+        case RS2_STREAM_GYRO     :
+        case RS2_STREAM_ACCEL    :
+            ss << std::setw(10) << pmstream->type << std::setw(2);
+            if (pmstream->index) ss << pmstream->index;
+            else ss << "";
+            ss << std::setw(15) << rs2_format_to_string(pmstream->fmt);        
+            ss << std::setw(10) << vss.str() << ":" << pmstream->fps;
+            break;
+        default:
+            ss << "Unknown stream type";
+        }        
+        return ss.str();
+    };
+
     static uint64_t profile2key(rs2::stream_profile profile) {
         convert_t t;
         t.key = 0;
