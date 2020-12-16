@@ -20,6 +20,7 @@
 #include <zstd_errors.h>
 
 #include <lz4.h>
+#include <jpeg.h>
 
 using FrameData        = std::shared_ptr<uint8_t[]>;
 using FrameDataQ       = std::shared_ptr<std::queue<FrameData>>;
@@ -83,13 +84,22 @@ public:
             m_sensor.open(profiles);
 
             auto callback = [&](const rs2::frame& frame) {
-                uint64_t profile_key = slib::profile2key(frame.get_profile());
+                rs2::stream_profile frame_profile = frame.get_profile();
+                uint64_t profile_key = slib::profile2key(frame_profile);
                 static std::chrono::system_clock::time_point beginning = std::chrono::system_clock::now();
 
                 auto start = std::chrono::system_clock::now();
 
-                uint8_t* data = (uint8_t*)frame.get_data();
-                uint32_t size = frame.get_data_size();
+                uint8_t* data = NULL;;
+                uint32_t size = 0;
+                if (frame_profile.stream_type() == RS2_STREAM_COLOR) {
+                    // convert the YUYV encoded frame to the JPEG encoded frame
+                    data = new uint8_t[frame.get_data_size()];
+                    size = jpeg::compress((uint8_t*)frame.get_data(), frame_profile.as<rs2::video_stream_profile>().width(), frame_profile.as<rs2::video_stream_profile>().height(), data, frame.get_data_size());
+                } else {
+                    data = (uint8_t*)frame.get_data();
+                    size = frame.get_data_size();
+                }
 
                 uint32_t offset = 0;
                 uint32_t out_size = 0;
@@ -135,6 +145,11 @@ public:
                     }
                 }
 
+                if (frame_profile.stream_type() == RS2_STREAM_COLOR) {
+                    // free the JPEG encoded frame
+                    delete [] data;
+                }
+
                 auto end = std::chrono::system_clock::now();
                 std::chrono::duration<double> elapsed = end - start;
                 std::chrono::duration<double> total_time = end - beginning;
@@ -144,8 +159,8 @@ public:
 
                 std::stringstream ss_name;
                 ss_name << "Frame '" << std::setiosflags(std::ios::left);
-                ss_name << std::setw(13) << get_name() << " / " << rs2_stream_to_string(frame.get_profile().stream_type());
-                if (frame.get_profile().stream_index()) ss_name << " " << frame.get_profile().stream_index();
+                ss_name << std::setw(13) << get_name() << " / " << rs2_stream_to_string(frame_profile.stream_type());
+                if (frame_profile.stream_index()) ss_name << " " << frame_profile.stream_index();
                 ss_name << "'";
 
                 std::stringstream ss;

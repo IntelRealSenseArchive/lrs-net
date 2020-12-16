@@ -22,6 +22,7 @@
 #include <zstd_errors.h>
 
 #include <lz4.h>
+#include <jpeg.h>
 
 #include <stdlib.h>
 
@@ -261,7 +262,16 @@ void rs_net_sensor::doDevice(uint64_t key) {
         } 
 
         uint8_t* frame_raw = new uint8_t[frame_size];
-        memcpy(frame_raw, net_stream->m_frame_raw, frame_size);
+        if (net_stream->profile.stream_type() == RS2_STREAM_COLOR) {
+            // decompress the JPEG
+            try {
+                size = jpeg::decompress(net_stream->m_frame_raw, total_size, frame_raw, frame_size);
+            } catch (...) {
+                std::cout << "Cannot decompress the frame, of size " << total_size << " to the buffer of " << frame_size << std::endl;
+            }
+        } else {
+            memcpy(frame_raw, net_stream->m_frame_raw, frame_size);
+        }
 
         auto end = std::chrono::system_clock::now();
         std::chrono::duration<double> elapsed = end - start;

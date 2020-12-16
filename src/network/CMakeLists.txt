@@ -26,6 +26,11 @@ set(RS_COMP_NET_CPP
     ${LZ4_DIR}/lz4.c
 )
 
+set(RS_JPEG_NET_CPP
+    ./jpeg.h
+    ./jpeg.cpp
+)
+
 set(RS_SERVER_NET_CPP
     ./RsServer.cpp
     ./RsServer.h
@@ -39,6 +44,7 @@ set(RS_SERVER_NET_CPP
 set(REALSENSE_NET_CPP 
     ${RS_CLIENT_NET_CPP} 
     ${RS_COMP_NET_CPP} 
+    ${RS_JPEG_NET_CPP} 
     ${RS_SERVER_NET_CPP}
     rs_net.cpp
 )
