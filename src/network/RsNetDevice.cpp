@@ -250,7 +250,10 @@ void rs_net_sensor::doDevice(uint64_t key) {
                 ret = ch->size - CHUNK_HLEN;
                 break;
             case 3:
-                std::cout << "JPEG not implemented yet" << std::endl;
+#define HEAD_LEN 41
+                // std::cout << "JPEG not implemented yet" << std::endl;
+                ret = ch->size - CHUNK_HLEN;
+                memcpy((void*)(net_stream->m_frame_raw + HEAD_LEN + offset), (void*)(data + CHUNK_HLEN), ret);
                 break;
             }
             size += ret;
@@ -263,10 +266,100 @@ void rs_net_sensor::doDevice(uint64_t key) {
 
         uint8_t* frame_raw = new uint8_t[frame_size];
         if (net_stream->profile.stream_type() == RS2_STREAM_COLOR) {
+            rs2::video_stream_profile vsp = net_stream->profile.as<rs2::video_stream_profile>();
+            // recreate missing headers
+
+// int MakeHeaders(u_char *p, int type, int w, int h, u_char *lqt,
+//                 u_char *cqt, u_short dri)
+// {
+        u_char *p = net_stream->m_frame_raw;
+        u_char *start = p;
+
+        /* convert from blocks to pixels */
+        int w = vsp.width();
+        int h = vsp.height();
+
+        *p++ = 0xff;
+        *p++ = 0xd8;            /* SOI */
+
+        // p = MakeQuantHeader(p, lqt, 0);
+        // p = MakeQuantHeader(p, cqt, 1);
+
+        *p++ = 0xff;
+        *p++ = 0xc0;            /* SOF */
+        *p++ = 0;               /* length msb */
+        *p++ = 17;              /* length lsb */
+        *p++ = 8;               /* 8-bit precision */
+        *p++ = h >> 8;          /* height msb */
+        *p++ = h;               /* height lsb */
+        *p++ = w >> 8;          /* width msb */
+        *p++ = w;               /* wudth lsb */
+        *p++ = 3;               /* number of components */
+        *p++ = 0;               /* comp 0, should be 1? */ 
+
+        // int type = 0;           // YUYV
+        // if (type == 0)
+        //         *p++ = 0x21;    /* hsamp = 2, vsamp = 1 */
+        // else
+                *p++ = 0x22;    /* hsamp = 2, vsamp = 2 */
+
+        *p++ = 0;               /* quant table 0 */
+        *p++ = 1;               /* comp 1, should be 2? */
+        *p++ = 0x11;            /* hsamp = 1, vsamp = 1 */
+        *p++ = 1;               /* quant table 1 */
+        *p++ = 2;               /* comp 2, should be 3? */
+        *p++ = 0x11;            /* hsamp = 1, vsamp = 1 */
+        *p++ = 1;               /* quant table 1 */
+        // p = MakeHuffmanHeader(p, lum_dc_codelens,
+        //                       sizeof(lum_dc_codelens),
+        //                       lum_dc_symbols,
+        //                       sizeof(lum_dc_symbols), 0, 0);
+        // p = MakeHuffmanHeader(p, lum_ac_codelens,
+        //                       sizeof(lum_ac_codelens),
+        //                       lum_ac_symbols,
+        //                       sizeof(lum_ac_symbols), 0, 1);
+        // p = MakeHuffmanHeader(p, chm_dc_codelens,
+        //                       sizeof(chm_dc_codelens),
+        //                       chm_dc_symbols,
+        //                       sizeof(chm_dc_symbols), 1, 0);
+        // p = MakeHuffmanHeader(p, chm_ac_codelens,
+        //                       sizeof(chm_ac_codelens),
+        //                       chm_ac_symbols,
+        //                       sizeof(chm_ac_symbols), 1, 1);
+
+        // if (dri != 0)
+        //         p = MakeDRIHeader(p, dri);
+        u_short dri = 1;
+        *p++ = 0xff;
+        *p++ = 0xdd;            /* DRI */
+        *p++ = 0x0;             /* length msb */
+        *p++ = 4;               /* length lsb */
+        *p++ = dri >> 8;        /* dri msb */
+        *p++ = dri & 0xff;      /* dri lsb */
+
+        *p++ = 0xff;
+        *p++ = 0xda;            /* SOS */
+        *p++ = 0;               /* length msb */
+        *p++ = 12;              /* length lsb */
+        *p++ = 3;               /* 3 components */
+        *p++ = 0;               /* comp 0 */
+        *p++ = 0;               /* huffman table 0 */
+        *p++ = 1;               /* comp 1 */
+        *p++ = 0x11;            /* huffman table 1 */
+        *p++ = 2;               /* comp 2 */
+        *p++ = 0x11;            /* huffman table 1 */
+        *p++ = 0;               /* first DCT coeff */
+        *p++ = 63;              /* last DCT coeff */
+        *p++ = 0;               /* sucessive approx. */
+
+        // return (p - start);
+
             // decompress the JPEG
             try {
-                jpeg::decompress(net_stream->m_frame_raw, total_size, frame_raw, frame_size);
+                // jpeg::decompress(net_stream->m_frame_raw, total_size, frame_raw, frame_size);
+                jpeg::decompress(net_stream->m_frame_raw, total_size + (p - start), frame_raw, frame_size);
                 size = frame_size;
+                memset(net_stream->m_frame_raw, 0, frame_size);
             } catch (...) {
                 std::cout << "Cannot decompress the frame, of size " << total_size << " to the buffer of " << frame_size << std::endl;
             }

@@ -40,7 +40,7 @@ int jpeg::compress(uint8_t* in, int width, int height, uint8_t* out, uint32_t si
     // jpeg_write_tables(&m_cinfo);
     // fclose(file);
 
-#if 1
+#if 0
 std::cout << "JPEG will be generated using " << ((m_cinfo.arith_code == true) ? "arithmetic" : "Huffman") << " coding, "
                                              << "4:" << m_cinfo.comp_info[0].v_samp_factor << ":" << m_cinfo.comp_info[0].h_samp_factor << " subsumpling, "
                                              << ((m_cinfo.restart_interval == 0) ? "without" : "with") << " restart MCUs, and "
@@ -80,15 +80,17 @@ std::cout << "JPEG will be generated using " << ((m_cinfo.arith_code == true) ? 
     jpeg_finish_compress(&m_cinfo);
     jpeg_destroy_compress(&m_cinfo);
 
+#ifdef JPEG_DUMP
     static int fnum = 0;
     std::stringstream fname;
-    fname << "/tmp/dump" << ++fnum << ".jpeg";
+    fname << "/tmp/cmp" << ++fnum << ".jpeg";
 
     FILE* dump = fopen(fname.str().c_str(), "wb");
     if (dump) {
         fwrite(out, 1, out_size, dump);
         fclose(dump);
     }
+#endif
     return out_size;
 }
 
@@ -96,6 +98,18 @@ int jpeg::decompress(unsigned char* in, int in_size, unsigned char* out, uint32_
 {
     struct jpeg_decompress_struct m_dinfo = {0};
     struct jpeg_error_mgr m_jerr = {0};
+
+#ifdef JPEG_DUMP
+    static int fnum = 0;
+    std::stringstream fname;
+    fname << "/tmp/dec" << ++fnum << ".jpeg";
+
+    FILE* dump = fopen(fname.str().c_str(), "wb");
+    if (dump) {
+        fwrite(in, 1, in_size, dump);
+        fclose(dump);
+    }
+#endif
 
     m_dinfo.err = jpeg_std_error(&m_jerr);
     jpeg_create_decompress(&m_dinfo);
