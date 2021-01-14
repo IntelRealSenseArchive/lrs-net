@@ -103,6 +103,7 @@ private:
 typedef struct chunk_header{
     uint16_t size;
     uint32_t offset;
+    uint32_t index;
     uint8_t  status;
     uint8_t  meta_id;
     uint64_t meta_data;

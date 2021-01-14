@@ -7,6 +7,8 @@
 
 #include <jpeg.h>
 
+// #define JPEG_DUMP
+
 #define JPEG_ABBREVIATED
 #ifdef JPEG_ABBREVIATED
 

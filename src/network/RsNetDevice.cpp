@@ -196,8 +196,10 @@ void rs_net_sensor::doControl() {
 uint32_t chunks_allocated = 0;
 
 void rs_net_sensor::doDevice(uint64_t key) {
+
     uint32_t fps_frame_count = 0;
     auto beginning = std::chrono::system_clock::now();
+    uint32_t rst_num = 0;
 
     uint32_t frame_size;
     rs_net_stream* net_stream = m_streams[key];
@@ -205,9 +207,22 @@ void rs_net_sensor::doDevice(uint64_t key) {
         rs2::video_stream_profile vsp = net_stream->profile.as<rs2::video_stream_profile>();
         uint32_t bpp = (vsp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
         frame_size = vsp.width() * vsp.height() * bpp;
+
+        int w = 0;
+        if (vsp.width() / 16 * 16 == vsp.width()) w = vsp.width();
+        else w = (vsp.width() / 16 + 1) * 16;
+        
+        int h = 0;
+        if (vsp.height() / 16 * 16 == vsp.height()) h = vsp.height();
+        else h = (vsp.height() / 16 + 1) * 16;
+        
+        rst_num = (w * h) / 256; // MCU size = ((8*size_v) * (8*size_h)) = 256 because size_v = size_h = 2
     } else if (net_stream->profile.is<rs2::motion_stream_profile>()) {
         frame_size = 32;
     } else throw std::runtime_error("Unknown profile on SW device support thread start.");
+
+    std::vector<uint8_t*> markers(rst_num);
+    for (int i = 0; i < rst_num; i++) markers[i] = 0;
 
     // rs2_video_stream s = slib::key2stream(key);
     std::cout << m_name << "/" << rs2_stream_to_string(net_stream->profile.stream_type()) << "\t: SW device support thread started" << std::endl;
@@ -224,6 +239,15 @@ void rs_net_sensor::doDevice(uint64_t key) {
         uint32_t offset = 0;
         uint32_t total_size = 0;
 
+        uint32_t  rst;
+        uint8_t*  off;
+        uint8_t*  ptr;
+
+        uint8_t*  marker_buffer;
+        uint8_t*  marker_data;
+        uint32_t* marker_size;
+        
+        std::cout << "RSTs: " << rst_num << std::endl; 
         while (offset < frame_size) {
             uint8_t* data = 0;
             do {
@@ -253,7 +277,53 @@ void rs_net_sensor::doDevice(uint64_t key) {
 #define HEAD_LEN 41
                 // std::cout << "JPEG not implemented yet" << std::endl;
                 ret = ch->size - CHUNK_HLEN;
+#if 0                
                 memcpy((void*)(net_stream->m_frame_raw + HEAD_LEN + offset), (void*)(data + CHUNK_HLEN), ret);
+#else
+
+                // build the array of RST markers
+                rst = ch->index; // the index of starting RST marker
+                // std::cout << "idx: " << rst;
+                off = data + CHUNK_HLEN; // skip the header
+                ptr = off;
+                ptr++;
+                marker_buffer = NULL;
+
+                // find the next marker
+                while (ptr - data < ch->size) {
+                    if (*ptr == 0xFF) {
+                        // marker detected
+                        switch(*(ptr + 1)) {
+                            case 0xD9: // std::cout << " EOI : " << std::endl;
+                            // case 0xDA: std::cout << " SOS" ;
+                            case 0xD0: 
+                            case 0xD1: 
+                            case 0xD2: 
+                            case 0xD3: 
+                            case 0xD4: 
+                            case 0xD5: 
+                            case 0xD6: 
+                            case 0xD7: 
+                                // std::cout << " RST" ;
+                                // std::cout << " rst[" << rst << "] " << std::hex << (uint32_t)(*(ptr+1)) << std::dec;
+
+                                marker_buffer = new uint8_t[ptr - off  + sizeof(uint32_t)];
+                                marker_size = (uint32_t*)marker_buffer;
+                                marker_data = marker_buffer + sizeof(uint32_t);
+
+                                *marker_size = ptr - off;
+                                memcpy(marker_data, off, ptr - off);
+
+                                if (markers[rst]) delete [] markers[rst];
+                                markers[rst] = marker_buffer;
+                                off = ptr;
+                                rst++;
+                        }
+                    }
+                    ptr++;
+                }
+                // std::cout << std::endl;
+#endif                
                 break;
             }
             size += ret;
@@ -354,12 +424,44 @@ void rs_net_sensor::doDevice(uint64_t key) {
 
         // return (p - start);
 
+            // combine the markers together
+            // std::cout << "Processing " << markers.size() << " markers" << std::endl ;
+            for (int i = 0; i < markers.size(); i++) {
+                marker_buffer = markers[i];
+                if (marker_buffer == NULL) {
+                    int val = 0xd0 | (i%8);
+                    *p++ = 0xff;
+                    *p++ = val;
+
+                    // std::cout << "r" << i << ": " << std::hex << val << std::dec << "\t";
+
+                    for (int j = 0; j < 256; j++) *p++ = 0;
+                } else {
+                    marker_size = (uint32_t*)marker_buffer;
+                    marker_data = marker_buffer + sizeof(uint32_t);
+
+                    // std::cout << "R" << i << ": " << std::hex << (uint32_t)marker_data[1] << std::dec << "\t";
+
+                    memcpy(p, marker_data, *marker_size);
+                    p += *marker_size;
+                }
+            }
+            // std::cout << std::endl;
+
             // decompress the JPEG
             try {
                 // jpeg::decompress(net_stream->m_frame_raw, total_size, frame_raw, frame_size);
                 jpeg::decompress(net_stream->m_frame_raw, total_size + (p - start), frame_raw, frame_size);
                 size = frame_size;
                 memset(net_stream->m_frame_raw, 0, frame_size);
+
+                // for (int i = 0; i < markers.size(); i++) {
+                //     if (markers[i]) {
+                //         delete [] markers[i];
+                //         markers[i] = NULL;
+                //     }
+                // }
+
             } catch (...) {
                 std::cout << "Cannot decompress the frame, of size " << total_size << " to the buffer of " << frame_size << std::endl;
             }

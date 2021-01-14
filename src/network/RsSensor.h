@@ -106,16 +106,18 @@ public:
                     uint8_t * rst = NULL;
 
                     uint32_t marks = 0;
+                    uint32_t total_marks = 0; // count the SOS too
+                    uint32_t start_marks = 0; // count the SOS too
 
-                    // find the SOS marker
-                    do {
-                        if ( (*ptr == 0xFF) && (*(ptr + 1) == 0xDA) ) break;
-                    } while (++ptr - data < size);
-
-                    // // find the first RST marker
+                    // // find the SOS marker
                     // do {
-                    //     if ( (*ptr == 0xFF) && (*(ptr + 1) >= 0xD0) && (*(ptr + 1) <= 0xD7) ) break;
+                    //     if ( (*ptr == 0xFF) && (*(ptr + 1) == 0xDA) ) break;
                     // } while (++ptr - data < size);
+
+                    // find the first RST marker
+                    do {
+                        if ( (*ptr == 0xFF) && (*(ptr + 1) >= 0xD0) && (*(ptr + 1) <= 0xD7) ) break;
+                    } while (++ptr - data < size);
 
                     if (ptr - data == size) {
                         // no SOS marker found
@@ -144,6 +146,7 @@ public:
                                     case 0xD7: 
                                         // std::cout << " RST" ;
                                         marks++;
+                                        total_marks++;
 
                                         if (ch.size + (ptr - off) > CHUNK_SIZE) {
                                             // chunk is ready - combine and send it
@@ -152,11 +155,14 @@ public:
                                             // std::cout << "RST : " << marks << "\t/ " << ch.size << std::endl;
                                             marks = 0;
 
+                                            ch.index = start_marks;
+                                            start_marks = total_marks;
+                                            ch.status = ch.status | 0x3; // set lower two bits - JPEG compression
+
                                             FrameData chunk(new uint8_t[ch.size + CHUNK_HLEN]);
                                             chunk_header_t* chp = (chunk_header_t*)chunk.get();
                                             *chp = ch;
                                             memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + ch.offset), ch.size);
-                                            ch.status = ch.status | 0x3; // set lower two bits - JPEG compression
                                             out_size  += ch.size;
 
                                             // push the chunk to queues
@@ -190,7 +196,7 @@ public:
                                     case 0xEE: 
                                     case 0xEF: std::cout << " APP" ; break;
                                     case 0xFE: std::cout << " COM" ; break;
-                                    // case 0xD9: std::cout << " EOI" << std::endl; break;
+                                    case 0xD9: std::cout << " EOI : " << total_marks << std::endl; break;
                                 }
                             }
                         } while (++ptr - data < size);
