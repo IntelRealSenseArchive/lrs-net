@@ -48,7 +48,7 @@ private:
             if (frame != nullptr) {
                 // we have got the data
                 gettimeofday(&fPresentationTime, NULL); // If you have a more accurate time - e.g., from an encoder - then use that instead.
-                fFrameSize = ((chunk_header_t*)frame.get())->size;
+                fFrameSize = ((chunk_header_t*)frame.get())->size + CHUNK_HLEN;
                 memcpy(fTo, frame.get(), fFrameSize);                
                 afterGetting(this); // After delivering the data, inform the reader that it is now available:
             } else {

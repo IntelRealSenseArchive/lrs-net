@@ -199,6 +199,8 @@ void rs_net_sensor::doDevice(uint64_t key) {
 
     uint32_t fps_frame_count = 0;
     auto beginning = std::chrono::system_clock::now();
+
+#define RSTPER 1
     uint32_t rst_num = 0;
 
     uint32_t frame_size;
@@ -216,7 +218,7 @@ void rs_net_sensor::doDevice(uint64_t key) {
         if (vsp.height() / 16 * 16 == vsp.height()) h = vsp.height();
         else h = (vsp.height() / 16 + 1) * 16;
         
-        rst_num = (w * h) / 256; // MCU size = ((8*size_v) * (8*size_h)) = 256 because size_v = size_h = 2
+        rst_num = (w * h) / 256 / RSTPER + 1; // MCU size = ((8*size_v) * (8*size_h)) = 256 because size_v = size_h = 2
     } else if (net_stream->profile.is<rs2::motion_stream_profile>()) {
         frame_size = 32;
     } else throw std::runtime_error("Unknown profile on SW device support thread start.");
@@ -239,9 +241,11 @@ void rs_net_sensor::doDevice(uint64_t key) {
         uint32_t offset = 0;
         uint32_t total_size = 0;
 
-        uint32_t  rst;
+        uint32_t  rst = 0;
         uint8_t*  off;
         uint8_t*  ptr;
+        uint8_t*  sos = NULL;
+        bool sos_flag = false;
 
         uint8_t*  marker_buffer;
         uint8_t*  marker_data;
@@ -281,20 +285,24 @@ void rs_net_sensor::doDevice(uint64_t key) {
                 memcpy((void*)(net_stream->m_frame_raw + HEAD_LEN + offset), (void*)(data + CHUNK_HLEN), ret);
 #else
 
+                if (ch->index != rst) std::cout << std::endl << "idx: " << ch->index << " !!! ";
+                else std::cout << std::endl << "idx: " << ch->index;
+
+                std::cout << " size " << ch->size << std::endl;
+
                 // build the array of RST markers
                 rst = ch->index; // the index of starting RST marker
-                // std::cout << "idx: " << rst;
                 off = data + CHUNK_HLEN; // skip the header
                 ptr = off;
                 ptr++;
                 marker_buffer = NULL;
 
-                // find the next marker
-                while (ptr - data < ch->size) {
+                // find next markers
+                while (ptr - data < ch->size + CHUNK_HLEN) {
                     if (*ptr == 0xFF) {
                         // marker detected
                         switch(*(ptr + 1)) {
-                            case 0xD9: // std::cout << " EOI : " << std::endl;
+                            case 0xD9: std::cout << " EOI : " << std::endl;
                             // case 0xDA: std::cout << " SOS" ;
                             case 0xD0: 
                             case 0xD1: 
@@ -304,8 +312,10 @@ void rs_net_sensor::doDevice(uint64_t key) {
                             case 0xD5: 
                             case 0xD6: 
                             case 0xD7: 
+                                std::cout << rst << " : " << std::hex << (uint32_t)(*(off + 1)) << std::dec << " ";
                                 // std::cout << " RST" ;
                                 // std::cout << " rst[" << rst << "] " << std::hex << (uint32_t)(*(ptr+1)) << std::dec;
+                                // std::cout << "rst: " << rst << "\t";
 
                                 marker_buffer = new uint8_t[ptr - off  + sizeof(uint32_t)];
                                 marker_size = (uint32_t*)marker_buffer;
@@ -313,6 +323,21 @@ void rs_net_sensor::doDevice(uint64_t key) {
 
                                 *marker_size = ptr - off;
                                 memcpy(marker_data, off, ptr - off);
+
+                                {
+                                    std::stringstream ss;
+                                    ss << "(" << std::setiosflags(std::ios::right) << std::setw(5) << (*marker_size) << ") ";
+                                    uint8_t* pp = off;
+                                    do {
+                                        ss << std::setiosflags(std::ios::right) << std::setw(3) << std::hex << (uint32_t)*pp;
+                                    } while (++pp != ptr);
+                                    std::cout << ss.str() << std::endl;
+                                }
+
+                                // std::stringstream ss;
+                                // ss << "rst:";
+                                // ss << std::setiosflags(std::ios::right) << std::setw(5) << rst << " ";
+                                // std::cout << ss.str();
 
                                 if (markers[rst]) delete [] markers[rst];
                                 markers[rst] = marker_buffer;
@@ -322,6 +347,38 @@ void rs_net_sensor::doDevice(uint64_t key) {
                     }
                     ptr++;
                 }
+
+#if 1
+                std::cout << rst << " : " << std::hex << (uint32_t)(*(off + 1)) << std::dec << " ";
+                // // catch the last marker
+                // std::stringstream ss;
+                // ss << "RST:";
+                // ss << std::setiosflags(std::ios::right) << std::setw(5) << rst << " ";
+                // std::cout << ss.str();
+
+                // this code removes "dead" MCUs, but somehow introduces artifacts
+                marker_buffer = new uint8_t[ptr - off  + sizeof(uint32_t)];
+                marker_size = (uint32_t*)marker_buffer;
+                marker_data = marker_buffer + sizeof(uint32_t);
+
+                *marker_size = ptr - off;
+                memcpy(marker_data, off, ptr - off);
+
+                {
+                    std::stringstream ss;
+                    ss << "(" << std::setiosflags(std::ios::right) << std::setw(5) << (*marker_size) << ") ";
+                    uint8_t* pp = off;
+                    do {
+                        ss << std::setiosflags(std::ios::right) << std::setw(3) << std::hex << (uint32_t)*pp;
+                    } while (++pp != ptr);
+                    std::cout << ss.str() << std::endl;
+                }
+
+                if (markers[rst]) delete [] markers[rst];
+                markers[rst] = marker_buffer;
+                off = ptr;
+                rst++;
+#endif
                 // std::cout << std::endl;
 #endif                
                 break;
@@ -399,7 +456,7 @@ void rs_net_sensor::doDevice(uint64_t key) {
 
         // if (dri != 0)
         //         p = MakeDRIHeader(p, dri);
-        u_short dri = 1;
+        u_short dri = RSTPER;
         *p++ = 0xff;
         *p++ = 0xdd;            /* DRI */
         *p++ = 0x0;             /* length msb */
@@ -426,16 +483,29 @@ void rs_net_sensor::doDevice(uint64_t key) {
 
             // combine the markers together
             // std::cout << "Processing " << markers.size() << " markers" << std::endl ;
+            if (sos) {
+                marker_size = (uint32_t*)marker_buffer;
+                marker_data = marker_buffer + sizeof(uint32_t);
+
+                // std::cout << "R" << i << ": " << std::hex << (uint32_t)marker_data[1] << std::dec << "\t";
+
+                memcpy(p, marker_data, *marker_size);
+                p += *marker_size;
+            } else {
+                for (int j = 0; j < 256 * RSTPER; j++) *p++ = 0;
+            }
+
             for (int i = 0; i < markers.size(); i++) {
                 marker_buffer = markers[i];
                 if (marker_buffer == NULL) {
-                    int val = 0xd0 | (i%8);
-                    *p++ = 0xff;
-                    *p++ = val;
-
+                    if (i != 0) {
+                        int val = 0xd0 | (i%8);
+                        *p++ = 0xff;
+                        *p++ = val;
+                    }
                     // std::cout << "r" << i << ": " << std::hex << val << std::dec << "\t";
 
-                    for (int j = 0; j < 256; j++) *p++ = 0;
+                    for (int j = 0; j < 256 * RSTPER; j++) *p++ = 0;
                 } else {
                     marker_size = (uint32_t*)marker_buffer;
                     marker_data = marker_buffer + sizeof(uint32_t);
@@ -455,12 +525,13 @@ void rs_net_sensor::doDevice(uint64_t key) {
                 size = frame_size;
                 memset(net_stream->m_frame_raw, 0, frame_size);
 
-                // for (int i = 0; i < markers.size(); i++) {
-                //     if (markers[i]) {
-                //         delete [] markers[i];
-                //         markers[i] = NULL;
-                //     }
-                // }
+                // clean the markers array for debugging purposes
+                for (int i = 0; i < markers.size(); i++) {
+                    if (markers[i]) {
+                        delete [] markers[i];
+                        markers[i] = NULL;
+                    }
+                }
 
             } catch (...) {
                 std::cout << "Cannot decompress the frame, of size " << total_size << " to the buffer of " << frame_size << std::endl;

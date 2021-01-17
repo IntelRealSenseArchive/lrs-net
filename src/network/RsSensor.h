@@ -106,36 +106,32 @@ public:
                     uint8_t * rst = NULL;
 
                     uint32_t marks = 0;
-                    uint32_t total_marks = 0; // count the SOS too
-                    uint32_t start_marks = 0; // count the SOS too
+                    uint32_t total_marks = 0;
+                    uint32_t start_marks = 0;
 
-                    // // find the SOS marker
-                    // do {
-                    //     if ( (*ptr == 0xFF) && (*(ptr + 1) == 0xDA) ) break;
-                    // } while (++ptr - data < size);
-
-                    // find the first RST marker
+                    // find the SOS marker
                     do {
-                        if ( (*ptr == 0xFF) && (*(ptr + 1) >= 0xD0) && (*(ptr + 1) <= 0xD7) ) break;
+                        if ( (*ptr == 0xFF) && (*(ptr + 1) == 0xDA) ) break;
                     } while (++ptr - data < size);
+
+                    // // find the first RST marker
+                    // do {
+                    //     if ( (*ptr == 0xFF) && (*(ptr + 1) >= 0xD0) && (*(ptr + 1) <= 0xD7) ) break;
+                    // } while (++ptr - data < size);
 
                     if (ptr - data == size) {
                         // no SOS marker found
                         std::cout << "No SOS marker found" << std::endl;
                     } else {
+                        // SOS found, just to the data
+                        ptr = ptr + *(ptr+3) + 2;
                         rst = off = ptr++;
                         chunk_header_t ch = {0};
                         do {
                             if (*ptr == 0xFF) {
                                 // marker detected
-                                switch(*(ptr + 1)) {
-                                    case 0xD8: std::cout << " SOI" ; break;
-                                    case 0xC0: std::cout << " SOF0" ; break;
-                                    case 0xC2: std::cout << " SOF2" ; break;
-                                    case 0xC4: std::cout << " DHT" ; break;
-                                    case 0xDB: std::cout << " DQT" ; break;
-                                    case 0xDD: std::cout << " DRI" ; break;
-                                    case 0xDA: std::cout << " SOS" ;
+                                switch (*(ptr + 1)) {
+                                    case 0xD9: std::cout << " EOI : " << total_marks << std::endl;
                                     case 0xD0: 
                                     case 0xD1: 
                                     case 0xD2: 
@@ -145,10 +141,9 @@ public:
                                     case 0xD6: 
                                     case 0xD7: 
                                         // std::cout << " RST" ;
-                                        marks++;
-                                        total_marks++;
 
-                                        if (ch.size + (ptr - off) > CHUNK_SIZE) {
+                                        if ((ch.size + (ptr - off) > CHUNK_SIZE) || (*(ptr + 1) == 0xD9)) {
+                                            std::cout << "Sending chunk of " << ch.size << " bytes, containing " << marks << " markers, index " << start_marks << std::endl;
                                             // chunk is ready - combine and send it
                                             ch.offset = rst - data;
                                             rst = off;
@@ -163,6 +158,17 @@ public:
                                             chunk_header_t* chp = (chunk_header_t*)chunk.get();
                                             *chp = ch;
                                             memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + ch.offset), ch.size);
+                                            {
+                                                std::stringstream ss;
+                                                ss << "[" << std::setiosflags(std::ios::right) << std::setw(5) << (ptr - off) << "] ";
+                                                uint8_t*  pp = NULL;
+                                                uint8_t* ppp = NULL;
+                                                ppp = pp = (uint8_t*)chunk.get();
+                                                do {
+                                                    ss << std::setiosflags(std::ios::right) << std::setw(3) << std::hex << (uint32_t)*pp;
+                                                } while (++pp - ppp < ch.size + CHUNK_HLEN);
+                                                std::cout << ss.str() << std::endl;
+                                            }
                                             out_size  += ch.size;
 
                                             // push the chunk to queues
@@ -175,31 +181,49 @@ public:
                                             ch.size = 0;
                                         }
 
+                                        {
+                                            std::stringstream ss;
+                                            ss << total_marks << " : " << std::hex << (uint32_t)(*(off + 1)) << std::dec << " ";
+                                            ss << "(" << std::setiosflags(std::ios::right) << std::setw(5) << (ptr - off) << ") ";
+                                            uint8_t* pp = off;
+                                            do {
+                                                ss << std::setiosflags(std::ios::right) << std::setw(3) << std::hex << (uint32_t)*pp;
+                                            } while (++pp != ptr);
+                                            std::cout << ss.str() << std::endl;
+                                        }
+
+                                        marks++;
+                                        total_marks++;
                                         ch.size = ch.size + (ptr - off);
                                         off = ptr;
 
                                         break;
-                                    case 0xE0: 
-                                    case 0xE1: 
-                                    case 0xE2: 
-                                    case 0xE3: 
-                                    case 0xE4: 
-                                    case 0xE5: 
-                                    case 0xE6: 
-                                    case 0xE7: 
-                                    case 0xE8: 
-                                    case 0xE9: 
-                                    case 0xEA: 
-                                    case 0xEB: 
-                                    case 0xEC: 
-                                    case 0xED: 
-                                    case 0xEE: 
-                                    case 0xEF: std::cout << " APP" ; break;
-                                    case 0xFE: std::cout << " COM" ; break;
-                                    case 0xD9: std::cout << " EOI : " << total_marks << std::endl; break;
+                                    // case 0xD9: std::cout << " EOI : " << total_marks << std::endl; break;
                                 }
                             }
                         } while (++ptr - data < size);
+
+                        std::cout << "Last index : " << start_marks << std::endl;
+#if 0
+                        // send the last imcomplite chunk
+                        ch.size += (ptr - rst);
+                        ch.offset = rst - data;
+                        ch.index = start_marks;
+                        ch.status = ch.status | 0x3; // set lower two bits - JPEG compression
+
+                        FrameData chunk(new uint8_t[ch.size + CHUNK_HLEN]);
+                        chunk_header_t* chp = (chunk_header_t*)chunk.get();
+                        *chp = ch;
+                        memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + ch.offset), ch.size);
+                        out_size  += ch.size;
+
+                        // push the chunk to queues
+                        for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it) 
+                        {
+                            std::lock_guard<std::mutex> lck (m_queues_mutex);
+                            it->second[profile_key]->push(chunk);
+                        }
+#endif
                     }
                     size = frame.get_data_size();
                     // free the JPEG encoded frame
