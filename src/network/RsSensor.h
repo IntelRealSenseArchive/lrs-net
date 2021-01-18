@@ -28,6 +28,8 @@ using StreamFrameDataQ = std::map<uint64_t, std::shared_ptr<std::queue<FrameData
 using ConsumerQMap     = std::map<void*, StreamFrameDataQ>;
 using ConsumerQPair    = std::pair<void*, StreamFrameDataQ>;
 
+using MetaMap          = std::map<uint8_t, rs2_metadata_type>;
+
 ////////////////////////////////////////////////////////////
 
 class frames_queue {
@@ -84,6 +86,16 @@ public:
             m_sensor.open(profiles);
 
             auto callback = [&](const rs2::frame& frame) {
+                MetaMap meta_attrs;
+
+                // Record all the available metadata attributes
+                for (size_t i = 0; i < RS2_FRAME_METADATA_COUNT; i++) {
+                    if (frame.supports_frame_metadata((rs2_frame_metadata_value)i)) {
+                        meta_attrs.emplace(std::make_pair(i, frame.get_frame_metadata((rs2_frame_metadata_value)i)));
+                    }
+                }
+                MetaMap::iterator meta_attr = meta_attrs.begin();
+
                 rs2::stream_profile frame_profile = frame.get_profile();
                 uint64_t profile_key = slib::profile2key(frame_profile);
                 static std::chrono::system_clock::time_point beginning = std::chrono::system_clock::now();
@@ -118,7 +130,7 @@ public:
                         // no SOS marker found
                         std::cout << "No SOS marker found" << std::endl;
                     } else {
-                        // SOS found, just to the data
+                        // SOS found, jump to the data
                         ptr = ptr + *(ptr+3) + 2;
                         rst = off = ptr++;
                         chunk_header_t ch = {0};
@@ -143,6 +155,11 @@ public:
                                         ch.index = start_marks;
                                         start_marks = total_marks;
                                         ch.status = ch.status | 0x3; // set lower two bits - JPEG compression
+
+                                        ch.meta_id = meta_attr->first;
+                                        ch.meta_data = meta_attr->second;
+                                        meta_attr++;
+                                        if (meta_attr == meta_attrs.end()) meta_attr = meta_attrs.begin();
 
                                         FrameData chunk(new uint8_t[ch.size + CHUNK_HLEN]);
                                         chunk_header_t* chp = (chunk_header_t*)chunk.get();
@@ -172,6 +189,11 @@ public:
                                         ch.index = start_marks;
                                         start_marks = total_marks;
                                         ch.status = ch.status | 0x3; // set lower two bits - JPEG compression
+
+                                        ch.meta_id = meta_attr->first;
+                                        ch.meta_data = meta_attr->second;
+                                        meta_attr++;
+                                        if (meta_attr == meta_attrs.end()) meta_attr = meta_attrs.begin();
 
                                         FrameData chunk(new uint8_t[ch.size + CHUNK_HLEN]);
                                         chunk_header_t* chp = (chunk_header_t*)chunk.get();
@@ -233,6 +255,11 @@ public:
                         ch->size  += ret;
                         out_size  += ch->size;
                         offset    += CHUNK_SIZE;
+
+                        ch->meta_id = meta_attr->first;
+                        ch->meta_data = meta_attr->second;
+                        meta_attr++;
+                        if (meta_attr == meta_attrs.end()) meta_attr = meta_attrs.begin();
 
                         // push the chunk to queues
                         for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it) 

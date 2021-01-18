@@ -95,8 +95,8 @@ private:
     char* fStreamId;
 };
 
-// #define COMPRESSION_ENABLED
-// #define COMPRESSION_ZSTD
+#define COMPRESSION_ENABLED
+#define COMPRESSION_ZSTD
 
 #define CHUNK_SIZE (1024*2)
 #pragma pack (push, 1)

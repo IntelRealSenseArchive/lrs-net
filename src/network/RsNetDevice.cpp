@@ -261,6 +261,8 @@ void rs_net_sensor::doDevice(uint64_t key) {
 
             if (ch->offset < offset) break;
 
+            m_sw_sensor->set_metadata((rs2_frame_metadata_value)(ch->meta_id), (rs2_metadata_type)(ch->meta_data));
+
             total_size += ch->size;
             offset = ch->offset;
             int ret = 0;
@@ -318,7 +320,6 @@ void rs_net_sensor::doDevice(uint64_t key) {
                     ptr++;
                 }
 
-                // this code removes "dead" MCUs, but somehow introduces artifacts
                 marker_buffer = new uint8_t[ptr - off  + sizeof(uint32_t)];
                 marker_size = (uint32_t*)marker_buffer;
                 marker_data = marker_buffer + sizeof(uint32_t);
