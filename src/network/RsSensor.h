@@ -197,6 +197,45 @@ public:
                                         ch.size = ch.size + (ptr - off);
                                         off = ptr;
 
+                                        if (*(ptr + 1) == 0xD9) {
+                                            std::cout << "Sending last chunk of " << ch.size << " bytes, containing " << marks << " markers, index " << start_marks << std::endl;
+                                            // chunk is ready - combine and send it
+                                            ch.offset = rst - data;
+                                            rst = off;
+                                            // std::cout << "RST : " << marks << "\t/ " << ch.size << std::endl;
+                                            marks = 0;
+
+                                            ch.index = start_marks;
+                                            start_marks = total_marks;
+                                            ch.status = ch.status | 0x3; // set lower two bits - JPEG compression
+
+                                            FrameData chunk(new uint8_t[ch.size + CHUNK_HLEN]);
+                                            chunk_header_t* chp = (chunk_header_t*)chunk.get();
+                                            *chp = ch;
+                                            memcpy((void*)(chunk.get() + CHUNK_HLEN), (void*)(data + ch.offset), ch.size);
+                                            {
+                                                std::stringstream ss;
+                                                ss << "[" << std::setiosflags(std::ios::right) << std::setw(5) << (ptr - off) << "] ";
+                                                uint8_t*  pp = NULL;
+                                                uint8_t* ppp = NULL;
+                                                ppp = pp = (uint8_t*)chunk.get();
+                                                do {
+                                                    ss << std::setiosflags(std::ios::right) << std::setw(3) << std::hex << (uint32_t)*pp;
+                                                } while (++pp - ppp < ch.size + CHUNK_HLEN);
+                                                std::cout << ss.str() << std::endl;
+                                            }
+                                            out_size  += ch.size;
+
+                                            // push the chunk to queues
+                                            for (ConsumerQMap::iterator it = m_queues.begin(); it != m_queues.end(); ++it) 
+                                            {
+                                                std::lock_guard<std::mutex> lck (m_queues_mutex);
+                                                it->second[profile_key]->push(chunk);
+                                            }
+
+                                            ch.size = 0;
+                                        }
+
                                         break;
                                     // case 0xD9: std::cout << " EOI : " << total_marks << std::endl; break;
                                 }

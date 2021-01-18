@@ -218,7 +218,7 @@ void rs_net_sensor::doDevice(uint64_t key) {
         if (vsp.height() / 16 * 16 == vsp.height()) h = vsp.height();
         else h = (vsp.height() / 16 + 1) * 16;
         
-        rst_num = (w * h) / 256 / RSTPER + 1; // MCU size = ((8*size_v) * (8*size_h)) = 256 because size_v = size_h = 2
+        rst_num = (w * h) / 256 / RSTPER; // MCU size = ((8*size_v) * (8*size_h)) = 256 because size_v = size_h = 2
     } else if (net_stream->profile.is<rs2::motion_stream_profile>()) {
         frame_size = 32;
     } else throw std::runtime_error("Unknown profile on SW device support thread start.");
@@ -479,22 +479,6 @@ void rs_net_sensor::doDevice(uint64_t key) {
         *p++ = 63;              /* last DCT coeff */
         *p++ = 0;               /* sucessive approx. */
 
-        // return (p - start);
-
-            // combine the markers together
-            // std::cout << "Processing " << markers.size() << " markers" << std::endl ;
-            if (sos) {
-                marker_size = (uint32_t*)marker_buffer;
-                marker_data = marker_buffer + sizeof(uint32_t);
-
-                // std::cout << "R" << i << ": " << std::hex << (uint32_t)marker_data[1] << std::dec << "\t";
-
-                memcpy(p, marker_data, *marker_size);
-                p += *marker_size;
-            } else {
-                for (int j = 0; j < 256 * RSTPER; j++) *p++ = 0;
-            }
-
             for (int i = 0; i < markers.size(); i++) {
                 marker_buffer = markers[i];
                 if (marker_buffer == NULL) {
@@ -516,7 +500,9 @@ void rs_net_sensor::doDevice(uint64_t key) {
                     p += *marker_size;
                 }
             }
-            // std::cout << std::endl;
+
+            *p++ = 0xff;
+            *p++ = 0xd9; /* SOS */
 
             // decompress the JPEG
             try {
