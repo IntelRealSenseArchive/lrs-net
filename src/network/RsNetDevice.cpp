@@ -251,7 +251,6 @@ void rs_net_sensor::doDevice(uint64_t key) {
         uint8_t*  marker_data;
         uint32_t* marker_size;
         
-        std::cout << "RSTs: " << rst_num << std::endl; 
         while (offset < frame_size) {
             uint8_t* data = 0;
             do {
@@ -281,14 +280,6 @@ void rs_net_sensor::doDevice(uint64_t key) {
 #define HEAD_LEN 41
                 // std::cout << "JPEG not implemented yet" << std::endl;
                 ret = ch->size - CHUNK_HLEN;
-#if 0                
-                memcpy((void*)(net_stream->m_frame_raw + HEAD_LEN + offset), (void*)(data + CHUNK_HLEN), ret);
-#else
-
-                if (ch->index != rst) std::cout << std::endl << "idx: " << ch->index << " !!! ";
-                else std::cout << std::endl << "idx: " << ch->index;
-
-                std::cout << " size " << ch->size << std::endl;
 
                 // build the array of RST markers
                 rst = ch->index; // the index of starting RST marker
@@ -302,59 +293,30 @@ void rs_net_sensor::doDevice(uint64_t key) {
                     if (*ptr == 0xFF) {
                         // marker detected
                         switch(*(ptr + 1)) {
-                            case 0xD9: std::cout << " EOI : " << std::endl;
-                            // case 0xDA: std::cout << " SOS" ;
-                            case 0xD0: 
-                            case 0xD1: 
-                            case 0xD2: 
-                            case 0xD3: 
-                            case 0xD4: 
-                            case 0xD5: 
-                            case 0xD6: 
-                            case 0xD7: 
-                                std::cout << rst << " : " << std::hex << (uint32_t)(*(off + 1)) << std::dec << " ";
-                                // std::cout << " RST" ;
-                                // std::cout << " rst[" << rst << "] " << std::hex << (uint32_t)(*(ptr+1)) << std::dec;
-                                // std::cout << "rst: " << rst << "\t";
+                        case 0xD9: //std::cout << " EOI : " << std::endl;
+                        case 0xD0: 
+                        case 0xD1: 
+                        case 0xD2: 
+                        case 0xD3: 
+                        case 0xD4: 
+                        case 0xD5: 
+                        case 0xD6: 
+                        case 0xD7: 
+                            marker_buffer = new uint8_t[ptr - off  + sizeof(uint32_t)];
+                            marker_size = (uint32_t*)marker_buffer;
+                            marker_data = marker_buffer + sizeof(uint32_t);
 
-                                marker_buffer = new uint8_t[ptr - off  + sizeof(uint32_t)];
-                                marker_size = (uint32_t*)marker_buffer;
-                                marker_data = marker_buffer + sizeof(uint32_t);
+                            *marker_size = ptr - off;
+                            memcpy(marker_data, off, ptr - off);
 
-                                *marker_size = ptr - off;
-                                memcpy(marker_data, off, ptr - off);
-
-                                {
-                                    std::stringstream ss;
-                                    ss << "(" << std::setiosflags(std::ios::right) << std::setw(5) << (*marker_size) << ") ";
-                                    uint8_t* pp = off;
-                                    do {
-                                        ss << std::setiosflags(std::ios::right) << std::setw(3) << std::hex << (uint32_t)*pp;
-                                    } while (++pp != ptr);
-                                    std::cout << ss.str() << std::endl;
-                                }
-
-                                // std::stringstream ss;
-                                // ss << "rst:";
-                                // ss << std::setiosflags(std::ios::right) << std::setw(5) << rst << " ";
-                                // std::cout << ss.str();
-
-                                if (markers[rst]) delete [] markers[rst];
-                                markers[rst] = marker_buffer;
-                                off = ptr;
-                                rst++;
+                            if (markers[rst]) delete [] markers[rst];
+                            markers[rst] = marker_buffer;
+                            off = ptr;
+                            rst++;
                         }
                     }
                     ptr++;
                 }
-
-#if 1
-                std::cout << rst << " : " << std::hex << (uint32_t)(*(off + 1)) << std::dec << " ";
-                // // catch the last marker
-                // std::stringstream ss;
-                // ss << "RST:";
-                // ss << std::setiosflags(std::ios::right) << std::setw(5) << rst << " ";
-                // std::cout << ss.str();
 
                 // this code removes "dead" MCUs, but somehow introduces artifacts
                 marker_buffer = new uint8_t[ptr - off  + sizeof(uint32_t)];
@@ -364,23 +326,11 @@ void rs_net_sensor::doDevice(uint64_t key) {
                 *marker_size = ptr - off;
                 memcpy(marker_data, off, ptr - off);
 
-                {
-                    std::stringstream ss;
-                    ss << "(" << std::setiosflags(std::ios::right) << std::setw(5) << (*marker_size) << ") ";
-                    uint8_t* pp = off;
-                    do {
-                        ss << std::setiosflags(std::ios::right) << std::setw(3) << std::hex << (uint32_t)*pp;
-                    } while (++pp != ptr);
-                    std::cout << ss.str() << std::endl;
-                }
-
                 if (markers[rst]) delete [] markers[rst];
                 markers[rst] = marker_buffer;
                 off = ptr;
                 rst++;
-#endif
-                // std::cout << std::endl;
-#endif                
+
                 break;
             }
             size += ret;
@@ -396,88 +346,58 @@ void rs_net_sensor::doDevice(uint64_t key) {
             rs2::video_stream_profile vsp = net_stream->profile.as<rs2::video_stream_profile>();
             // recreate missing headers
 
-// int MakeHeaders(u_char *p, int type, int w, int h, u_char *lqt,
-//                 u_char *cqt, u_short dri)
-// {
-        u_char *p = net_stream->m_frame_raw;
-        u_char *start = p;
+            u_char *p = net_stream->m_frame_raw;
+            u_char *start = p;
 
-        /* convert from blocks to pixels */
-        int w = vsp.width();
-        int h = vsp.height();
+            /* convert from blocks to pixels */
+            int w = vsp.width();
+            int h = vsp.height();
 
-        *p++ = 0xff;
-        *p++ = 0xd8;            /* SOI */
+            *p++ = 0xff;
+            *p++ = 0xd8;            /* SOI */
 
-        // p = MakeQuantHeader(p, lqt, 0);
-        // p = MakeQuantHeader(p, cqt, 1);
+            *p++ = 0xff;
+            *p++ = 0xc0;            /* SOF */
+            *p++ = 0;               /* length msb */
+            *p++ = 17;              /* length lsb */
+            *p++ = 8;               /* 8-bit precision */
+            *p++ = h >> 8;          /* height msb */
+            *p++ = h;               /* height lsb */
+            *p++ = w >> 8;          /* width msb */
+            *p++ = w;               /* wudth lsb */
+            *p++ = 3;               /* number of components */
+            *p++ = 0;               /* comp 0, should be 1? */ 
+            *p++ = 0x22;            /* hsamp = 2, vsamp = 2 */
+            *p++ = 0;               /* quant table 0 */
+            *p++ = 1;               /* comp 1, should be 2? */
+            *p++ = 0x11;            /* hsamp = 1, vsamp = 1 */
+            *p++ = 1;               /* quant table 1 */
+            *p++ = 2;               /* comp 2, should be 3? */
+            *p++ = 0x11;            /* hsamp = 1, vsamp = 1 */
+            *p++ = 1;               /* quant table 1 */
 
-        *p++ = 0xff;
-        *p++ = 0xc0;            /* SOF */
-        *p++ = 0;               /* length msb */
-        *p++ = 17;              /* length lsb */
-        *p++ = 8;               /* 8-bit precision */
-        *p++ = h >> 8;          /* height msb */
-        *p++ = h;               /* height lsb */
-        *p++ = w >> 8;          /* width msb */
-        *p++ = w;               /* wudth lsb */
-        *p++ = 3;               /* number of components */
-        *p++ = 0;               /* comp 0, should be 1? */ 
+            u_short dri = RSTPER;
+            *p++ = 0xff;
+            *p++ = 0xdd;            /* DRI */
+            *p++ = 0x0;             /* length msb */
+            *p++ = 4;               /* length lsb */
+            *p++ = dri >> 8;        /* dri msb */
+            *p++ = dri & 0xff;      /* dri lsb */
 
-        // int type = 0;           // YUYV
-        // if (type == 0)
-        //         *p++ = 0x21;    /* hsamp = 2, vsamp = 1 */
-        // else
-                *p++ = 0x22;    /* hsamp = 2, vsamp = 2 */
-
-        *p++ = 0;               /* quant table 0 */
-        *p++ = 1;               /* comp 1, should be 2? */
-        *p++ = 0x11;            /* hsamp = 1, vsamp = 1 */
-        *p++ = 1;               /* quant table 1 */
-        *p++ = 2;               /* comp 2, should be 3? */
-        *p++ = 0x11;            /* hsamp = 1, vsamp = 1 */
-        *p++ = 1;               /* quant table 1 */
-        // p = MakeHuffmanHeader(p, lum_dc_codelens,
-        //                       sizeof(lum_dc_codelens),
-        //                       lum_dc_symbols,
-        //                       sizeof(lum_dc_symbols), 0, 0);
-        // p = MakeHuffmanHeader(p, lum_ac_codelens,
-        //                       sizeof(lum_ac_codelens),
-        //                       lum_ac_symbols,
-        //                       sizeof(lum_ac_symbols), 0, 1);
-        // p = MakeHuffmanHeader(p, chm_dc_codelens,
-        //                       sizeof(chm_dc_codelens),
-        //                       chm_dc_symbols,
-        //                       sizeof(chm_dc_symbols), 1, 0);
-        // p = MakeHuffmanHeader(p, chm_ac_codelens,
-        //                       sizeof(chm_ac_codelens),
-        //                       chm_ac_symbols,
-        //                       sizeof(chm_ac_symbols), 1, 1);
-
-        // if (dri != 0)
-        //         p = MakeDRIHeader(p, dri);
-        u_short dri = RSTPER;
-        *p++ = 0xff;
-        *p++ = 0xdd;            /* DRI */
-        *p++ = 0x0;             /* length msb */
-        *p++ = 4;               /* length lsb */
-        *p++ = dri >> 8;        /* dri msb */
-        *p++ = dri & 0xff;      /* dri lsb */
-
-        *p++ = 0xff;
-        *p++ = 0xda;            /* SOS */
-        *p++ = 0;               /* length msb */
-        *p++ = 12;              /* length lsb */
-        *p++ = 3;               /* 3 components */
-        *p++ = 0;               /* comp 0 */
-        *p++ = 0;               /* huffman table 0 */
-        *p++ = 1;               /* comp 1 */
-        *p++ = 0x11;            /* huffman table 1 */
-        *p++ = 2;               /* comp 2 */
-        *p++ = 0x11;            /* huffman table 1 */
-        *p++ = 0;               /* first DCT coeff */
-        *p++ = 63;              /* last DCT coeff */
-        *p++ = 0;               /* sucessive approx. */
+            *p++ = 0xff;
+            *p++ = 0xda;            /* SOS */
+            *p++ = 0;               /* length msb */
+            *p++ = 12;              /* length lsb */
+            *p++ = 3;               /* 3 components */
+            *p++ = 0;               /* comp 0 */
+            *p++ = 0;               /* huffman table 0 */
+            *p++ = 1;               /* comp 1 */
+            *p++ = 0x11;            /* huffman table 1 */
+            *p++ = 2;               /* comp 2 */
+            *p++ = 0x11;            /* huffman table 1 */
+            *p++ = 0;               /* first DCT coeff */
+            *p++ = 63;              /* last DCT coeff */
+            *p++ = 0;               /* sucessive approx. */
 
             for (int i = 0; i < markers.size(); i++) {
                 marker_buffer = markers[i];
@@ -487,14 +407,11 @@ void rs_net_sensor::doDevice(uint64_t key) {
                         *p++ = 0xff;
                         *p++ = val;
                     }
-                    // std::cout << "r" << i << ": " << std::hex << val << std::dec << "\t";
 
                     for (int j = 0; j < 256 * RSTPER; j++) *p++ = 0;
                 } else {
                     marker_size = (uint32_t*)marker_buffer;
                     marker_data = marker_buffer + sizeof(uint32_t);
-
-                    // std::cout << "R" << i << ": " << std::hex << (uint32_t)marker_data[1] << std::dec << "\t";
 
                     memcpy(p, marker_data, *marker_size);
                     p += *marker_size;
@@ -506,18 +423,17 @@ void rs_net_sensor::doDevice(uint64_t key) {
 
             // decompress the JPEG
             try {
-                // jpeg::decompress(net_stream->m_frame_raw, total_size, frame_raw, frame_size);
                 jpeg::decompress(net_stream->m_frame_raw, total_size + (p - start), frame_raw, frame_size);
                 size = frame_size;
                 memset(net_stream->m_frame_raw, 0, frame_size);
 
-                // clean the markers array for debugging purposes
-                for (int i = 0; i < markers.size(); i++) {
-                    if (markers[i]) {
-                        delete [] markers[i];
-                        markers[i] = NULL;
-                    }
-                }
+                // // clean the markers array for debugging purposes
+                // for (int i = 0; i < markers.size(); i++) {
+                //     if (markers[i]) {
+                //         delete [] markers[i];
+                //         markers[i] = NULL;
+                //     }
+                // }
 
             } catch (...) {
                 std::cout << "Cannot decompress the frame, of size " << total_size << " to the buffer of " << frame_size << std::endl;
@@ -938,7 +854,7 @@ void RSSink::afterGettingFrame(unsigned frameSize, unsigned numTruncatedBytes, s
 
 void RSSink::getNextFrame(RSSink* sink) {
     sink->continuePlaying();
-};
+}
 
 Boolean RSSink::continuePlaying() {
     if(fSource == NULL) return False; // sanity check (should not happen)
