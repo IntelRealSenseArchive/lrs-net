@@ -33,18 +33,109 @@ void server::doHTTP() {
         res.set_content(m_sensors_desc, "text/plain");
     });
 
+    svr.Get("/devinfo", [&](const httplib::Request &, httplib::Response &res) {
+        res.set_content(m_devinfo, "text/plain");
+    });
+
+    // get options
+    svr.Get("/options", [&](const httplib::Request &, httplib::Response &res) {
+        m_options_mutex.lock();
+        res.set_content(m_sensors_opts, "text/plain");
+        // res.set_content("", "text/plain");
+        m_options_mutex.unlock();
+    });
+
+    // set options
+    svr.Post("/options",
+        [&](const httplib::Request &req, httplib::Response &res, const httplib::ContentReader &content_reader) {
+            if (req.is_multipart_form_data()) {
+                std::cout << "No support for multipart messages" << std::endl;
+            } else {
+                std::string body;
+                content_reader([&](const char *data, size_t data_length) {
+                    body.append(data, data_length);
+                    return true;
+                });
+                res.set_content(body, "text/plain");
+
+                std::cout << "Got options to set: " << body << std::endl;
+            }
+        }
+    );
+  
     svr.listen("0.0.0.0", 8080);
 }
 
-server::server(rs2::device dev, std::string addr, int port)
+void server::doOpts() {
+    std::cout << "Camera options synchronization thread started." << std::endl;
+    
+    while (1) {
+        m_options_mutex.lock();
+        m_sensors_opts.clear();
+        for (rs2::sensor sensor : m_dev.query_sensors()) {
+            std::string sensor_name(sensor.supports(RS2_CAMERA_INFO_NAME) ? sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
+            m_sensors_opts += sensor_name;
+
+            for (int i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++) {
+                m_sensors_opts += "|";
+
+                rs2_option option_type = static_cast<rs2_option>(i);
+
+                m_sensors_opts += std::to_string(i); // option index
+                m_sensors_opts += ",";
+
+                if (sensor.supports(option_type)) {
+                    // Get the current value of the option
+                    float current_value = sensor.get_option(option_type);
+                    m_sensors_opts += std::to_string(current_value);
+                    m_sensors_opts += ",";
+
+                    struct rs2::option_range current_range = sensor.get_option_range(option_type);
+                    m_sensors_opts += std::to_string(current_range.min);
+                    m_sensors_opts += ",";
+                    m_sensors_opts += std::to_string(current_range.max);
+                    m_sensors_opts += ",";
+                    m_sensors_opts += std::to_string(current_range.def);
+                    m_sensors_opts += ",";
+                    m_sensors_opts += std::to_string(current_range.step);
+                } else {
+                    m_sensors_opts += "n/a";
+                }
+            }
+            m_sensors_opts += "\r\n";
+        }
+        m_options_mutex.unlock();
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+        // std::cout << m_sensors_opts;
+    }
+}
+
+server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
 {
-    m_httpd  = std::thread( [this](){ doHTTP(); } ); 
+    m_httpd   = std::thread( [this](){ doHTTP(); } ); 
+    m_options = std::thread( [this](){ doOpts(); } ); 
 
     m_serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
     m_name   = dev.get_info(RS2_CAMERA_INFO_NAME);
 
+    for (int i = 0; i < static_cast<int>(RS2_CAMERA_INFO_COUNT); i++) {
+        rs2_camera_info info_type = static_cast<rs2_camera_info>(i);
+        m_devinfo += std::to_string(i);
+        m_devinfo += ",";
+        m_devinfo += rs2_camera_info_to_string(info_type);
+        m_devinfo += ",";
+        
+        if (dev.supports(info_type))
+            m_devinfo += dev.get_info(info_type);
+        else
+            m_devinfo += "n/a";
+
+        m_devinfo += "|";
+    }
+    m_devinfo += "\r\n";
+    std::cout << m_devinfo;
+
     ReceivingInterfaceAddr = inet_addr(addr.c_str());
-    OutPacketBuffer::increaseMaxSizeTo(640*480*2); // TODO: put real values
 
     // Begin by setting up our usage environment:
     scheduler = BasicTaskScheduler::createNew();
@@ -70,7 +161,6 @@ server::server(rs2::device dev, std::string addr, int port)
         }
         std::cout << std::endl;
 
-        // std::string sensor_path = m_serial + "/" + sensor_name;
         std::string sensor_path = sensor_name;
         ServerMediaSession* sms = ServerMediaSession::createNew(*env, sensor_path.c_str(), sensor_name.c_str(), "Session streamed by LRS-Net");
 
@@ -100,7 +190,6 @@ server::server(rs2::device dev, std::string addr, int port)
 
         delete[] url;
     }
-    // std::cout << m_sensors_desc;
 }
 
 void server::start()

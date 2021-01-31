@@ -289,6 +289,8 @@ public:
 
     ~rs_net_sensor() {};
 
+    std::string get_name() { return m_name; }
+
     void set_mrl(std::string mrl) { m_mrl  = mrl; };
 
     void add_profile(uint64_t key) { 
@@ -316,6 +318,23 @@ public:
         // StreamProfile sp = std::make_shared<rs2::video_stream_profile>(m_sw_sensor->add_video_stream(stream, slib::is_default(key)));
     };
 
+    void add_option(uint32_t idx, float val, rs2::option_range range) {
+        rs2_option opt = static_cast<rs2_option>(idx);
+
+        m_sw_sensor->add_option(opt, range);
+
+        try
+        {
+            m_sw_sensor->set_option(opt, val);
+        }
+        catch (const rs2::error& e)
+        {
+            // Some options can only be set while the camera is streaming,
+            // and generally the hardware might fail so it is good practice to catch exceptions from set_option
+            std::cout << "Failed to set option " << opt << ". (" << e.what() << ")" << std::endl;
+        }
+    }
+
     bool is_streaming() { return m_sw_sensor->get_active_streams().size() > 0; };
 
     void start() {
@@ -335,6 +354,7 @@ private:
 
     std::string    m_name;
     std::string    m_mrl;
+    std::string    m_opts;
 
     SoftSensor     m_sw_sensor;
     ProfileQMap    m_stream_q;

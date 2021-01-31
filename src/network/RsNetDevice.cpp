@@ -190,6 +190,43 @@ void rs_net_sensor::doControl() {
         }
     }
 
+    // m_options_mutex.lock();
+    m_opts.clear();
+    // std::string sensor_name(m_sw_sensor.supports(RS2_CAMERA_INFO_NAME) ? m_sw_sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
+    // m_opts += sensor_name;
+    m_opts += get_name();
+
+    for (int i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++) {
+        m_opts += "|";
+
+        rs2_option option_type = static_cast<rs2_option>(i);
+
+        m_opts += std::to_string(i); // option index
+        m_opts += ",";
+
+        if (m_sw_sensor->supports(option_type)) {
+            // Get the current value of the option
+            float current_value = m_sw_sensor->get_option(option_type);
+            m_opts += std::to_string(current_value);
+            m_opts += ",";
+
+            struct rs2::option_range current_range = m_sw_sensor->get_option_range(option_type);
+            m_opts += std::to_string(current_range.min);
+            m_opts += ",";
+            m_opts += std::to_string(current_range.max);
+            m_opts += ",";
+            m_opts += std::to_string(current_range.def);
+            m_opts += ",";
+            m_opts += std::to_string(current_range.step);
+        } else {
+            m_opts += "n/a";
+        }
+    }
+    m_opts += "\r\n";
+    // m_options_mutex.unlock();
+    // std::this_thread::sleep_for(std::chrono::seconds(5));
+    std::cout << m_opts;
+
     m_env->taskScheduler().scheduleDelayedTask(100000, doControl, this);
 }
 
@@ -528,8 +565,13 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
 
     // Obtain number of sensors and their names via HTTP and construct software device. 
     httplib::Client client(m_ip_address, 8080);
-    auto res = client.Get("/query");
+    auto inf = client.Get("/devinfo");
+    if (res->status == 200) {
+    // sw_dev.register_info(rs2_camera_info::RS2_CAMERA_INFO_IP_ADDRESS, addr);
+    // sw_dev.register_info(rs2_camera_info::RS2_CAMERA_INFO_SERIAL_NUMBER, /* data.serialNum */ "555555555555");
+    }
 
+    auto res = client.Get("/query");
     if (res->status == 200) {
         // parse the response in form:
         // <sensor_name>|<sensor_mrl>|<sensor_profile1>|<sensor_profile2>|...|<sensor_profileN>
@@ -564,6 +606,72 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
             sensors.emplace_back(netsensor);
         }
     }
+
+    // Obtain sensors options via HTTP and update software device. 
+    auto opt = client.Get("/options");
+    if (opt->status == 200) {
+        // parse the response in form:
+        // <sensor_name>|<opt1_index>,[n/a|<opt1_value>,<opt1_min>,<opt1_max>,<opt1_def>,<opt1_step>]|...|<optN_index>,[n/a|<optN_value>,<optN_min>,<optN_max>,<optN_def>,<optN_step>]>
+
+        std::string query = opt->body;
+        while (!query.empty()) {
+            // get the sensor line
+            uint32_t line_pos = query.find("\r\n");
+            std::string sensor = query.substr(0, line_pos) + "|";
+            query.erase(0, line_pos + 2);
+
+            // get the sensor name
+            uint32_t pos = sensor.find("|");
+            std::string sensor_name = sensor.substr(0, pos);
+            sensor.erase(0, pos + 1);
+
+            // locate the proper NetSensor
+            auto s = sensors.begin();
+            for (; s != sensors.end(); s++) {
+                if (std::strcmp((*s)->get_name().c_str(), sensor_name.c_str()) == 0) {
+                    break;
+                }
+            }
+
+            while (!sensor.empty()) {
+                pos = sensor.find(",");
+                uint32_t idx = std::stoul(sensor.substr(0, pos).c_str());
+                sensor.erase(0, pos + 1);
+                pos = sensor.find("|");
+                std::string vals = sensor.substr(0, pos + 1);
+                sensor.erase(0, pos + 1);
+                if (std::strcmp(vals.c_str(), "n/a|") != 0) {
+                    float val = 0; 
+                    rs2::option_range range = {0};
+
+                    // while (!vals.empty()) {
+                        pos = vals.find(",");
+                        val = std::stof(vals.substr(0, pos).c_str());
+                        vals.erase(0, pos + 1);
+
+                        pos = vals.find(",");
+                        range.min = std::stof(vals.substr(0, pos).c_str());
+                        vals.erase(0, pos + 1);
+
+                        pos = vals.find(",");
+                        range.max = std::stof(vals.substr(0, pos).c_str());
+                        vals.erase(0, pos + 1);
+
+                        pos = vals.find(",");
+                        range.def = std::stof(vals.substr(0, pos).c_str());
+                        vals.erase(0, pos + 1);
+
+                        pos = vals.find("|");
+                        range.step = std::stof(vals.substr(0, pos).c_str());
+                        vals.erase(0, pos + 1);
+                    // }
+                    // std::cout << idx << "=" << val << " [" << range.min << ", " << range.max << "], " << range.def << "/" << range.step << std::endl;
+                    (*s)->add_option(idx, val, range);
+                }
+            }
+        }
+    }
+
 
     std::cout << "Software device is ready" << std::endl;
 
@@ -804,7 +912,7 @@ void RSRTSPClient::subsessionByeHandler(void* clientData, char const* reason)
 }
 
 // Implementation of "RSSink":
-#define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_SIZE + CHUNK_HLEN)
+#define RS_SINK_RECEIVE_BUFFER_SIZE (CHUNK_SIZE + CHUNK_HLEN + 20)
 
 RSSink* RSSink::createNew(UsageEnvironment& env, MediaSubsession& subsession, char const* streamId, SafeQueue* q, uint32_t threshold)
 {

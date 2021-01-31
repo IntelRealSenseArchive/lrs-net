@@ -188,6 +188,8 @@ private:
     UsageEnvironment* env;
     TaskScheduler* scheduler;
 
+    rs2::device m_dev;
+
     RsRTSPServer* srv;
 
     // std::vector<rs2::video_stream_profile> supported_stream_profiles; // streams for extrinsics map creation
@@ -199,5 +201,11 @@ private:
     std::thread m_httpd;
     void doHTTP();
 
+    std::thread m_options;
+    void doOpts();
+    std::mutex m_options_mutex;
+
+    std::string m_devinfo;      // device information
     std::string m_sensors_desc; // sensors description
+    std::string m_sensors_opts; // sensors options
 };
