@@ -132,8 +132,8 @@ server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
 
         m_devinfo += "|";
     }
-    m_devinfo += "\r\n";
-    std::cout << m_devinfo;
+    // m_devinfo += "\r\n";
+    // std::cout << m_devinfo;
 
     ReceivingInterfaceAddr = inet_addr(addr.c_str());
 

@@ -225,7 +225,7 @@ void rs_net_sensor::doControl() {
     m_opts += "\r\n";
     // m_options_mutex.unlock();
     // std::this_thread::sleep_for(std::chrono::seconds(5));
-    std::cout << m_opts;
+    // std::cout << m_opts;
 
     m_env->taskScheduler().scheduleDelayedTask(100000, doControl, this);
 }
@@ -563,12 +563,35 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
             std::cout << "WARNING: invalid port specified, using default";
         }
 
+    uint32_t pos = 0;
+
     // Obtain number of sensors and their names via HTTP and construct software device. 
     httplib::Client client(m_ip_address, 8080);
     auto inf = client.Get("/devinfo");
-    if (res->status == 200) {
-    // sw_dev.register_info(rs2_camera_info::RS2_CAMERA_INFO_IP_ADDRESS, addr);
-    // sw_dev.register_info(rs2_camera_info::RS2_CAMERA_INFO_SERIAL_NUMBER, /* data.serialNum */ "555555555555");
+    if (inf->status == 200) {
+        // parse the response in form:
+        // <info1_index,info1_desc,info1_val>|<info2_index,info2_desc,info2_val>|...|<infoN_index,infoN_desc,infoN_val>
+
+        std::string devinfo = inf->body;
+        while (!devinfo.empty()) {
+            // get the index
+            pos = devinfo.find(",");
+            uint32_t idx = std::stoul(devinfo.substr(0, pos).c_str());
+            devinfo.erase(0, pos + 1);
+
+            // get the description
+            pos = devinfo.find(",");
+            std::string desc = devinfo.substr(0, pos);
+            devinfo.erase(0, pos + 1);
+
+            pos = devinfo.find("|");
+            std::string val = devinfo.substr(0, pos);
+            devinfo.erase(0, pos + 1);
+            if (std::strcmp(val.c_str(), "n/a") != 0) {
+                m_device.register_info((rs2_camera_info)idx, val);
+            }
+            // std::cout << std::setw(20) << desc << " : " << val << std::endl;
+        }
     }
 
     auto res = client.Get("/query");
@@ -584,7 +607,7 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
             query.erase(0, line_pos + 2);
 
             // get the sensor name
-            uint32_t pos = sensor.find("|");
+            pos = sensor.find("|");
             std::string sensor_name = sensor.substr(0, pos);
             sensor.erase(0, pos + 1);
 
