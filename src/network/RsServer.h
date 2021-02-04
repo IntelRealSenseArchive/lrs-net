@@ -202,8 +202,8 @@ private:
     void doHTTP();
 
     std::thread m_options;
-    void doOpts();
-    std::mutex m_options_mutex;
+    void doOptions();
+    std::mutex  m_options_mutex;    
 
     std::string m_devinfo;      // device information
     std::string m_sensors_desc; // sensors description

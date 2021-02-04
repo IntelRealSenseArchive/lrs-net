@@ -190,43 +190,6 @@ void rs_net_sensor::doControl() {
         }
     }
 
-    // m_options_mutex.lock();
-    m_opts.clear();
-    // std::string sensor_name(m_sw_sensor.supports(RS2_CAMERA_INFO_NAME) ? m_sw_sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
-    // m_opts += sensor_name;
-    m_opts += get_name();
-
-    for (int i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++) {
-        m_opts += "|";
-
-        rs2_option option_type = static_cast<rs2_option>(i);
-
-        m_opts += std::to_string(i); // option index
-        m_opts += ",";
-
-        if (m_sw_sensor->supports(option_type)) {
-            // Get the current value of the option
-            float current_value = m_sw_sensor->get_option(option_type);
-            m_opts += std::to_string(current_value);
-            m_opts += ",";
-
-            struct rs2::option_range current_range = m_sw_sensor->get_option_range(option_type);
-            m_opts += std::to_string(current_range.min);
-            m_opts += ",";
-            m_opts += std::to_string(current_range.max);
-            m_opts += ",";
-            m_opts += std::to_string(current_range.def);
-            m_opts += ",";
-            m_opts += std::to_string(current_range.step);
-        } else {
-            m_opts += "n/a";
-        }
-    }
-    m_opts += "\r\n";
-    // m_options_mutex.unlock();
-    // std::this_thread::sleep_for(std::chrono::seconds(5));
-    // std::cout << m_opts;
-
     m_env->taskScheduler().scheduleDelayedTask(100000, doControl, this);
 }
 
@@ -695,12 +658,51 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
         }
     }
 
-
     std::cout << "Software device is ready" << std::endl;
 
     intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
 
+    m_options = std::thread( [this](){ doOptions(); } ); 
+
     for (auto netsensor : sensors) netsensor->start();
+}
+
+void rs_net_device::doOptions() {
+    std::cout << "Options synchronization thread started" << std::endl;
+
+    httplib::Client client(m_ip_address, 8080);
+    std::string options;
+
+    while (1) {
+        options.clear();
+        for (auto netsensor : sensors) {
+            options += netsensor->get_name();
+
+            for (int i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++) {
+                options += "|";
+
+                rs2_option option_type = static_cast<rs2_option>(i);
+
+                options += std::to_string(i); // option index
+                options += ",";
+
+                if (netsensor->get_sensor()->supports(option_type) && !netsensor->get_sensor()->is_option_read_only(option_type)) {
+                    // Get the current value of the option
+                    float current_value = netsensor->get_sensor()->get_option(option_type);
+                    options += std::to_string(current_value);
+                } else {
+                    options += "n/a";
+                }
+            }
+            options += "\r\n";
+        }
+
+        client.Post("/options", options.c_str(), "text/plain");
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000)); 
+    }
+
+    std::cout << "Options synchronization thread exited" << std::endl;
 }
 
 void RSRTSPClient::shutdownStream() {

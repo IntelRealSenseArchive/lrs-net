@@ -41,7 +41,6 @@ void server::doHTTP() {
     svr.Get("/options", [&](const httplib::Request &, httplib::Response &res) {
         m_options_mutex.lock();
         res.set_content(m_sensors_opts, "text/plain");
-        // res.set_content("", "text/plain");
         m_options_mutex.unlock();
     });
 
@@ -51,14 +50,59 @@ void server::doHTTP() {
             if (req.is_multipart_form_data()) {
                 std::cout << "No support for multipart messages" << std::endl;
             } else {
-                std::string body;
+                std::string options;
                 content_reader([&](const char *data, size_t data_length) {
-                    body.append(data, data_length);
+                    options.append(data, data_length);
                     return true;
                 });
-                res.set_content(body, "text/plain");
+                res.set_content(options, "text/plain");
 
-                std::cout << "Got options to set: " << body << std::endl;
+                // std::cout << "Got options to set: " << options << std::endl;
+                while (!options.empty()) {
+                    // get the sensor line
+                    uint32_t line_pos = options.find("\r\n");
+                    std::string sensor = options.substr(0, line_pos) + "|";
+                    options.erase(0, line_pos + 2);
+
+                    // get the sensor name
+                    uint32_t pos = sensor.find("|");
+                    std::string sensor_name = sensor.substr(0, pos);
+                    sensor.erase(0, pos + 1);
+
+                    // locate the proper sensor
+                    auto sensors = m_dev.query_sensors();
+                    auto s = sensors.begin();
+                    for (; s != sensors.end(); s++) {
+                        std::string sname(s->supports(RS2_CAMERA_INFO_NAME) ? s->get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
+                        if (std::strcmp(sname.c_str(), sensor_name.c_str()) == 0) {
+                            break;
+                        }
+                    }
+
+                    while (!sensor.empty()) {
+                        pos = sensor.find(",");
+                        uint32_t idx = std::stoul(sensor.substr(0, pos).c_str());
+                        sensor.erase(0, pos + 1);
+                        pos = sensor.find("|");
+                        std::string vals = sensor.substr(0, pos + 1);
+                        sensor.erase(0, pos + 1);
+                        if (std::strcmp(vals.c_str(), "n/a|") != 0) {
+                            pos = vals.find("|");
+                            float val = std::stof(vals.substr(0, pos).c_str());
+
+                            m_options_mutex.lock();
+                            if (s->get_option((rs2_option)idx) != val) {
+                                std::cout << "Setting option " << idx << " to " << val << std::endl;
+                                try {
+                                    s->set_option((rs2_option)idx, val);
+                                } catch(const rs2::error& e) {
+                                    std::cout << "Failed to set option " << idx << ". (" << e.what() << ")" << std::endl;
+                                }
+                            }
+                            m_options_mutex.unlock();
+                        }
+                    }
+                }
             }
         }
     );
@@ -66,16 +110,16 @@ void server::doHTTP() {
     svr.listen("0.0.0.0", 8080);
 }
 
-void server::doOpts() {
-    std::cout << "Camera options synchronization thread started." << std::endl;
-    
+void server::doOptions() {
+    std::cout << "Options synchronization thread started." << std::endl;
     while (1) {
         m_options_mutex.lock();
         m_sensors_opts.clear();
         for (rs2::sensor sensor : m_dev.query_sensors()) {
             std::string sensor_name(sensor.supports(RS2_CAMERA_INFO_NAME) ? sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
-            m_sensors_opts += sensor_name;
 
+            // Prepare options list
+            m_sensors_opts += sensor_name;
             for (int i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++) {
                 m_sensors_opts += "|";
 
@@ -105,19 +149,13 @@ void server::doOpts() {
             m_sensors_opts += "\r\n";
         }
         m_options_mutex.unlock();
-        std::this_thread::sleep_for(std::chrono::seconds(5));
-        // std::cout << m_sensors_opts;
+        std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
     }
 }
 
 server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
 {
-    m_httpd   = std::thread( [this](){ doHTTP(); } ); 
-    m_options = std::thread( [this](){ doOpts(); } ); 
-
-    m_serial = dev.get_info(RS2_CAMERA_INFO_SERIAL_NUMBER);
-    m_name   = dev.get_info(RS2_CAMERA_INFO_NAME);
-
+    // Prepare device info
     for (int i = 0; i < static_cast<int>(RS2_CAMERA_INFO_COUNT); i++) {
         rs2_camera_info info_type = static_cast<rs2_camera_info>(i);
         m_devinfo += std::to_string(i);
@@ -164,6 +202,7 @@ server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
         std::string sensor_path = sensor_name;
         ServerMediaSession* sms = ServerMediaSession::createNew(*env, sensor_path.c_str(), sensor_name.c_str(), "Session streamed by LRS-Net");
 
+        // Prepare profiles
         std::stringstream profile_keys;
         for (auto profile : sensor.get_stream_profiles()) {
             std::cout <<  "Profile : " << slib::print_profile(profile);
@@ -189,7 +228,40 @@ server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
         if (profile_keys.str().size()) m_sensors_desc += sensor_name + "|" + url + profile_keys.str() + "\r\n";
 
         delete[] url;
+
+        // // Prepare options list
+        // m_sensors_opts += sensor_name;
+        // for (int i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++) {
+        //     m_sensors_opts += "|";
+
+        //     rs2_option option_type = static_cast<rs2_option>(i);
+
+        //     m_sensors_opts += std::to_string(i); // option index
+        //     m_sensors_opts += ",";
+
+        //     if (sensor.supports(option_type)) {
+        //         // Get the current value of the option
+        //         float current_value = sensor.get_option(option_type);
+        //         m_sensors_opts += std::to_string(current_value);
+        //         m_sensors_opts += ",";
+
+        //         struct rs2::option_range current_range = sensor.get_option_range(option_type);
+        //         m_sensors_opts += std::to_string(current_range.min);
+        //         m_sensors_opts += ",";
+        //         m_sensors_opts += std::to_string(current_range.max);
+        //         m_sensors_opts += ",";
+        //         m_sensors_opts += std::to_string(current_range.def);
+        //         m_sensors_opts += ",";
+        //         m_sensors_opts += std::to_string(current_range.step);
+        //     } else {
+        //         m_sensors_opts += "n/a";
+        //     }
+        // }
+        // m_sensors_opts += "\r\n";
     }
+
+    m_options = std::thread( [this](){ doOptions(); } ); 
+    m_httpd = std::thread( [this](){ doHTTP(); } ); 
 }
 
 void server::start()

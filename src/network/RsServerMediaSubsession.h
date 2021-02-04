@@ -43,7 +43,7 @@ protected:
         const char* auxSDPLine = OnDemandServerMediaSubsession::getAuxSDPLine(rtpSink, inputSource);
         if (auxSDPLine == NULL) auxSDPLine = "";
 
-        sprintf(privateAuxSDPLine, "%sactive=%s;key=%llu\r\n", auxSDPLine, 
+        sprintf(privateAuxSDPLine, "%sactive=%s;key=%lu\r\n", auxSDPLine, 
             m_queue->is_streaming(m_stream) ? "yes" : "no", slib::profile2key(m_stream)
         );
 
