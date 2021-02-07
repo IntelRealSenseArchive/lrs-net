@@ -208,4 +208,5 @@ private:
     std::string m_devinfo;      // device information
     std::string m_sensors_desc; // sensors description
     std::string m_sensors_opts; // sensors options
+    std::string m_extrinsics;   // streams extrinsics
 };

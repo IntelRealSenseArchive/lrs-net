@@ -37,6 +37,11 @@ void server::doHTTP() {
         res.set_content(m_devinfo, "text/plain");
     });
 
+    // get extrinsics
+    svr.Get("/extrinsics", [&](const httplib::Request &, httplib::Response &res) {
+        res.set_content(m_extrinsics, "text/plain");
+    });
+
     // get options
     svr.Get("/options", [&](const httplib::Request &, httplib::Response &res) {
         m_options_mutex.lock();
@@ -91,6 +96,7 @@ void server::doHTTP() {
                             float val = std::stof(vals.substr(0, pos).c_str());
 
                             m_options_mutex.lock();
+                            if (s->supports((rs2_option)idx))
                             if (s->get_option((rs2_option)idx) != val) {
                                 std::cout << "Setting option " << idx << " to " << val << std::endl;
                                 try {
@@ -153,6 +159,8 @@ void server::doOptions() {
     }
 }
 
+using StreamIndex = std::pair<rs2_stream, int>;
+
 server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
 {
     // Prepare device info
@@ -186,6 +194,7 @@ server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
         exit(1);
     }
 
+    std::map<StreamIndex, rs2::stream_profile> unique_streams;
     for (rs2::sensor sensor : dev.query_sensors()) {
         frames_queue* pfq = new frames_queue(sensor);
 
@@ -213,9 +222,25 @@ server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
                 profile.format() == RS2_FORMAT_Y8   ||
                 profile.format() == RS2_FORMAT_MOTION_XYZ32F) 
             {
+                unique_streams[StreamIndex(profile.stream_type(), profile.stream_index())] = profile;
+
                 sms->addSubsession(RsServerMediaSubsession::createNew(*env, pfq, profile));
                 std::cout << " - ACCEPTED" << std::endl;
-                profile_keys << "|" << slib::profile2key(profile);
+                profile_keys << "|" << slib::profile2key(profile) << ",";
+
+                // add intrinsics
+                if (profile.is<rs2::video_stream_profile>()) {
+                    rs2_intrinsics intrinsics = profile.as<rs2::video_stream_profile>().get_intrinsics();
+                    profile_keys << intrinsics.width << "," << intrinsics.height << ",";
+                    profile_keys << intrinsics.ppx   << "," << intrinsics.ppy    << ",";
+                    profile_keys << intrinsics.fx    << "," << intrinsics.fy     << ",";
+                    for (int c = 0; c < 5; c++) {
+                        profile_keys << intrinsics.coeffs[c] << ",";
+                    }
+                    profile_keys << (int32_t)(intrinsics.model);
+                } else {
+                    profile_keys << "n/a";
+                }
                 continue;
             }
             std::cout << " - ignored" << std::endl;
@@ -228,36 +253,56 @@ server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
         if (profile_keys.str().size()) m_sensors_desc += sensor_name + "|" + url + profile_keys.str() + "\r\n";
 
         delete[] url;
+    }
 
-        // // Prepare options list
-        // m_sensors_opts += sensor_name;
-        // for (int i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++) {
-        //     m_sensors_opts += "|";
+    // Prepare extrinsics
+    for (auto from_stream : unique_streams) {
+        std::string from_name = rs2_stream_to_string(from_stream.first.first);
+        if (from_stream.first.second) {
+            from_name += " ";
+            from_name += std::to_string(from_stream.first.second);
+        }
+        auto from_profile = from_stream.second;
 
-        //     rs2_option option_type = static_cast<rs2_option>(i);
+        for (auto to_stream : unique_streams) {
+            std::string to_name = rs2_stream_to_string(to_stream.first.first);
+            if (to_stream.first.second) {
+                to_name += " ";
+                to_name += std::to_string(to_stream.first.second);
+            }
+            auto to_profile = to_stream.second;
 
-        //     m_sensors_opts += std::to_string(i); // option index
-        //     m_sensors_opts += ",";
+            m_extrinsics += from_name;
+            m_extrinsics += "|";
+            m_extrinsics += to_name;
+            m_extrinsics += "|";
 
-        //     if (sensor.supports(option_type)) {
-        //         // Get the current value of the option
-        //         float current_value = sensor.get_option(option_type);
-        //         m_sensors_opts += std::to_string(current_value);
-        //         m_sensors_opts += ",";
+            m_extrinsics += std::to_string(slib::profile2key(from_profile));
+            m_extrinsics += "|";
+            m_extrinsics += std::to_string(slib::profile2key(to_profile));
 
-        //         struct rs2::option_range current_range = sensor.get_option_range(option_type);
-        //         m_sensors_opts += std::to_string(current_range.min);
-        //         m_sensors_opts += ",";
-        //         m_sensors_opts += std::to_string(current_range.max);
-        //         m_sensors_opts += ",";
-        //         m_sensors_opts += std::to_string(current_range.def);
-        //         m_sensors_opts += ",";
-        //         m_sensors_opts += std::to_string(current_range.step);
-        //     } else {
-        //         m_sensors_opts += "n/a";
-        //     }
-        // }
-        // m_sensors_opts += "\r\n";
+            try {
+                // Given two streams, use the get_extrinsics_to() function to get the transformation from the stream to the other stream
+                rs2_extrinsics extrinsics = from_profile.get_extrinsics_to(to_profile);
+                // std::cout << "From " << from_name << " to " << to_name << std::endl;
+                for (int t = 0; t < 3; t++) {
+                    m_extrinsics += "|";
+                    m_extrinsics += std::to_string(extrinsics.translation[t]);
+                }
+                for (int r = 0; r < 9; r++) {
+                    m_extrinsics += "|";
+                    m_extrinsics += std::to_string(extrinsics.rotation[r]);
+                }
+                // std::cout << "Translation Vector : [" << extrinsics.translation[0] << "," << extrinsics.translation[1] << "," << extrinsics.translation[2] << "]\n";
+                // std::cout << "Rotation Matrix    : [" << extrinsics.rotation[0] << "," << extrinsics.rotation[3] << "," << extrinsics.rotation[6] << "]\n";
+                // std::cout << "                   : [" << extrinsics.rotation[1] << "," << extrinsics.rotation[4] << "," << extrinsics.rotation[7] << "]\n";
+                // std::cout << "                   : [" << extrinsics.rotation[2] << "," << extrinsics.rotation[5] << "," << extrinsics.rotation[8] << "]" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to get extrinsics for the streams (" << from_name << " => " << to_name << "): " << e.what() << std::endl;
+            }
+
+            m_extrinsics += "\r\n";
+        }
     }
 
     m_options = std::thread( [this](){ doOptions(); } ); 

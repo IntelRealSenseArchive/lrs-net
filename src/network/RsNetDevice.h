@@ -294,7 +294,7 @@ public:
 
     void set_mrl(std::string mrl) { m_mrl  = mrl; };
 
-    void add_profile(uint64_t key) { 
+    void add_profile(uint64_t key, rs2_intrinsics intrinsics) { 
         rs2_video_stream  vstream = slib::key2stream(key);
         rs2_motion_stream mstream;
         switch (vstream.type) {
@@ -302,6 +302,7 @@ public:
         case RS2_STREAM_COLOR    :
         case RS2_STREAM_INFRARED :
         case RS2_STREAM_FISHEYE  :
+            vstream.intrinsics = intrinsics;
             m_sw_sensor->add_video_stream(vstream, slib::is_default(key));
             break;
         case RS2_STREAM_GYRO     :

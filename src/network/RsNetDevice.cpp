@@ -560,7 +560,8 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
     auto res = client.Get("/query");
     if (res->status == 200) {
         // parse the response in form:
-        // <sensor_name>|<sensor_mrl>|<sensor_profile1>|<sensor_profile2>|...|<sensor_profileN>
+        // <sensor_name>|<sensor_mrl>|<sensor_profile1,intrinsics1>|<sensor_profile2,intrinsics2>|...|<sensor_profileN,intrinsicsN>
+        // intrinsics = [width,heigth,ppx,ppy,fx,fy,coeff[0],coeff[1],coeff[2],coeff[3],coeff[4],model|n/a]
 
         std::string query = res->body;
         while (!query.empty()) {
@@ -582,11 +583,60 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
             netsensor->set_mrl(sensor.substr(0, pos));
             sensor.erase(0, pos + 1);
 
+            // while (!sensor.empty()) {
+            //     pos = sensor.find("|");
+            //     uint64_t key = std::stoull(sensor.substr(0, pos).c_str());
+            //     sensor.erase(0, pos + 1);
+            //     netsensor->add_profile(key);
+            // }
+
             while (!sensor.empty()) {
-                pos = sensor.find("|");
+                pos = sensor.find(",");
                 uint64_t key = std::stoull(sensor.substr(0, pos).c_str());
                 sensor.erase(0, pos + 1);
-                netsensor->add_profile(key);
+
+                // get intrinsics
+                rs2_intrinsics intrinsics_val;
+                pos = sensor.find("|");
+                std::string intrinsics_str = sensor.substr(0, pos);
+                sensor.erase(0, pos + 1);
+                if (std::strcmp(intrinsics_str.c_str(), "n/a") != 0) {
+                    pos = intrinsics_str.find(",");
+                    intrinsics_val.width = std::stoi(intrinsics_str.substr(0, pos).c_str());
+                    intrinsics_str.erase(0, pos + 1);
+
+                    pos = intrinsics_str.find(",");
+                    intrinsics_val.height = std::stoi(intrinsics_str.substr(0, pos).c_str());
+                    intrinsics_str.erase(0, pos + 1);
+
+                    pos = intrinsics_str.find(",");
+                    intrinsics_val.ppx = std::stof(intrinsics_str.substr(0, pos).c_str());
+                    intrinsics_str.erase(0, pos + 1);
+
+                    pos = intrinsics_str.find(",");
+                    intrinsics_val.ppy = std::stof(intrinsics_str.substr(0, pos).c_str());
+                    intrinsics_str.erase(0, pos + 1);
+
+                    pos = intrinsics_str.find(",");
+                    intrinsics_val.fx = std::stof(intrinsics_str.substr(0, pos).c_str());
+                    intrinsics_str.erase(0, pos + 1);
+
+                    pos = intrinsics_str.find(",");
+                    intrinsics_val.fy = std::stof(intrinsics_str.substr(0, pos).c_str());
+                    intrinsics_str.erase(0, pos + 1);
+
+                    for (int c = 0; c < 5; c++) {
+                        pos = intrinsics_str.find(",");
+                        intrinsics_val.coeffs[c] = std::stof(intrinsics_str.substr(0, pos).c_str());
+                        intrinsics_str.erase(0, pos + 1);
+                    }
+
+                    pos = intrinsics_str.find("|");
+                    intrinsics_val.model = (rs2_distortion)std::stoi(intrinsics_str.substr(0, pos).c_str());
+                    intrinsics_str.erase(0, pos + 1);
+                }
+
+                netsensor->add_profile(key, intrinsics_val);
             }
 
             sensors.emplace_back(netsensor);
