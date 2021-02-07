@@ -159,27 +159,23 @@ void server::doOptions() {
     }
 }
 
-using StreamIndex = std::pair<rs2_stream, int>;
-
 server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
 {
     // Prepare device info
     for (int i = 0; i < static_cast<int>(RS2_CAMERA_INFO_COUNT); i++) {
         rs2_camera_info info_type = static_cast<rs2_camera_info>(i);
         m_devinfo += std::to_string(i);
-        m_devinfo += ",";
+        m_devinfo += "|";
         m_devinfo += rs2_camera_info_to_string(info_type);
-        m_devinfo += ",";
+        m_devinfo += "|";
         
         if (dev.supports(info_type))
             m_devinfo += dev.get_info(info_type);
         else
             m_devinfo += "n/a";
 
-        m_devinfo += "|";
+        m_devinfo += "\r\n";
     }
-    // m_devinfo += "\r\n";
-    // std::cout << m_devinfo;
 
     ReceivingInterfaceAddr = inet_addr(addr.c_str());
 

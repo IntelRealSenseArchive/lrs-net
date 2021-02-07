@@ -528,35 +528,36 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
 
     uint32_t pos = 0;
 
-    // Obtain number of sensors and their names via HTTP and construct software device. 
+    // Obtain device information via HTTP and set it for the software device. 
     httplib::Client client(m_ip_address, 8080);
     auto inf = client.Get("/devinfo");
     if (inf->status == 200) {
         // parse the response in form:
-        // <info1_index,info1_desc,info1_val>|<info2_index,info2_desc,info2_val>|...|<infoN_index,infoN_desc,infoN_val>
+        // <info_index|info_desc|info_val>
 
         std::string devinfo = inf->body;
         while (!devinfo.empty()) {
             // get the index
-            pos = devinfo.find(",");
+            pos = devinfo.find("|");
             uint32_t idx = std::stoul(devinfo.substr(0, pos).c_str());
             devinfo.erase(0, pos + 1);
 
             // get the description
-            pos = devinfo.find(",");
+            pos = devinfo.find("|");
             std::string desc = devinfo.substr(0, pos);
             devinfo.erase(0, pos + 1);
 
-            pos = devinfo.find("|");
+            pos = devinfo.find("\r\n");
             std::string val = devinfo.substr(0, pos);
-            devinfo.erase(0, pos + 1);
+            devinfo.erase(0, pos + 2);
             if (std::strcmp(val.c_str(), "n/a") != 0) {
+                std::cout << std::left << std::setw(30) << desc << " : " << val << std::endl;
                 m_device.register_info((rs2_camera_info)idx, val);
             }
-            // std::cout << std::setw(20) << desc << " : " << val << std::endl;
         }
     }
 
+    // Obtain number of sensors and their names via HTTP and construct the software device. 
     auto res = client.Get("/query");
     if (res->status == 200) {
         // parse the response in form:
@@ -582,13 +583,6 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
             pos = sensor.find("|");
             netsensor->set_mrl(sensor.substr(0, pos));
             sensor.erase(0, pos + 1);
-
-            // while (!sensor.empty()) {
-            //     pos = sensor.find("|");
-            //     uint64_t key = std::stoull(sensor.substr(0, pos).c_str());
-            //     sensor.erase(0, pos + 1);
-            //     netsensor->add_profile(key);
-            // }
 
             while (!sensor.empty()) {
                 pos = sensor.find(",");
@@ -643,7 +637,7 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
         }
     }
 
-    // Obtain sensors options via HTTP and update software device. 
+    // Obtain sensors options via HTTP and update the software device. 
     auto opt = client.Get("/options");
     if (opt->status == 200) {
         // parse the response in form:
@@ -680,37 +674,104 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
                     float val = 0; 
                     rs2::option_range range = {0};
 
-                    // while (!vals.empty()) {
-                        pos = vals.find(",");
-                        val = std::stof(vals.substr(0, pos).c_str());
-                        vals.erase(0, pos + 1);
+                    pos = vals.find(",");
+                    val = std::stof(vals.substr(0, pos).c_str());
+                    vals.erase(0, pos + 1);
 
-                        pos = vals.find(",");
-                        range.min = std::stof(vals.substr(0, pos).c_str());
-                        vals.erase(0, pos + 1);
+                    pos = vals.find(",");
+                    range.min = std::stof(vals.substr(0, pos).c_str());
+                    vals.erase(0, pos + 1);
 
-                        pos = vals.find(",");
-                        range.max = std::stof(vals.substr(0, pos).c_str());
-                        vals.erase(0, pos + 1);
+                    pos = vals.find(",");
+                    range.max = std::stof(vals.substr(0, pos).c_str());
+                    vals.erase(0, pos + 1);
 
-                        pos = vals.find(",");
-                        range.def = std::stof(vals.substr(0, pos).c_str());
-                        vals.erase(0, pos + 1);
+                    pos = vals.find(",");
+                    range.def = std::stof(vals.substr(0, pos).c_str());
+                    vals.erase(0, pos + 1);
 
-                        pos = vals.find("|");
-                        range.step = std::stof(vals.substr(0, pos).c_str());
-                        vals.erase(0, pos + 1);
-                    // }
-                    // std::cout << idx << "=" << val << " [" << range.min << ", " << range.max << "], " << range.def << "/" << range.step << std::endl;
+                    pos = vals.find("|");
+                    range.step = std::stof(vals.substr(0, pos).c_str());
+                    vals.erase(0, pos + 1);
+
                     (*s)->add_option(idx, val, range);
                 }
             }
         }
     }
 
-    std::cout << "Software device is ready" << std::endl;
+    std::map<StreamPair, rs2_extrinsics> extrinsics_map;
 
-    intrinsics = { 640, 480, (float)640 / 2, (float)480 / 2, (float)640 / 2, (float)480 / 2, RS2_DISTORTION_BROWN_CONRADY ,{ 0,0,0,0,0 } };
+    // Prepare extrinsics map
+    auto ext = client.Get("/extrinsics");
+    if (ext->status == 200) {
+        // parse the response in form:
+        // <sensor_name_from>|<sensor_name_to>|<profie_name_from>|<profie_name_to>|<translation1>,...,<translation3>|<rotation1>,...,<rotation9>
+
+        std::string query = ext->body;
+        while (!query.empty()) {
+            // get the one extrinsics line
+            uint32_t line_pos = query.find("\r\n");
+            std::string extrinsics = query.substr(0, line_pos);
+            query.erase(0, line_pos + 2);
+
+            // get the first stream name
+            uint32_t pos = extrinsics.find("|");
+            std::string from_name = extrinsics.substr(0, pos);
+            extrinsics.erase(0, pos + 1);
+
+            // get the second stream name
+            pos = extrinsics.find("|");
+            std::string to_name = extrinsics.substr(0, pos);
+            extrinsics.erase(0, pos + 1);
+
+            // get the first stream profile
+            pos = extrinsics.find("|");
+            uint64_t from_profile = std::stoll(extrinsics.substr(0, pos));
+            extrinsics.erase(0, pos + 1);
+            rs2_video_stream from_stream = slib::key2stream(from_profile);
+
+            // get the second stream profile
+            pos = extrinsics.find("|");
+            uint64_t to_profile = std::stoll(extrinsics.substr(0, pos));
+            extrinsics.erase(0, pos + 1);
+            rs2_video_stream to_stream = slib::key2stream(to_profile);
+
+            rs2_extrinsics extr;
+
+            // translation
+            for (int t = 0; t < 3; t++) {
+                pos = extrinsics.find(",");
+                extr.translation[t] = std::stof(extrinsics.substr(0, pos).c_str());
+                extrinsics.erase(0, pos + 1);
+            }
+
+            // rotation
+            for (int r = 0; r < 9; r++) {
+                pos = extrinsics.find(",");
+                extr.rotation[r] = std::stof(extrinsics.substr(0, pos).c_str());
+                extrinsics.erase(0, pos + 1);
+            }
+
+            // set the extrinsincs
+            extrinsics_map[StreamPair(StreamIndex(from_stream.type, from_stream.index), StreamIndex(to_stream.type, to_stream.index))] = extr;
+        }
+    }
+
+    std::vector<rs2::stream_profile> profiles;
+    for (rs2::sensor sensor : m_device.query_sensors()) {
+        auto sprofiles = sensor.get_stream_profiles(); 
+        profiles.insert(profiles.end(), sprofiles.begin(), sprofiles.end());
+    }
+
+    for (auto from_profile : profiles) {
+        for (auto to_profile : profiles) {
+            from_profile.register_extrinsics_to(to_profile, 
+                extrinsics_map[StreamPair(StreamIndex(from_profile.stream_type(), from_profile.stream_index()), StreamIndex(to_profile.stream_type(), to_profile.stream_index()))]);
+        }
+    }
+
+    std::cout << "Software device is ready" << std::endl;
 
     m_options = std::thread( [this](){ doOptions(); } ); 
 

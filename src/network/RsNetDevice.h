@@ -63,6 +63,9 @@ using StreamProfile   = std::shared_ptr<rs2::video_stream_profile>;
 using ProfileQPair    = std::pair<rs2::stream_profile, SafeQueue*>;
 using ProfileQMap     = std::map<rs2::stream_profile, SafeQueue*>;
 
+using StreamIndex     = std::pair<rs2_stream, int>;
+using StreamPair      = std::pair<StreamIndex, StreamIndex>;
+
 class RSSink : public MediaSink {
 public:
     static RSSink* createNew(UsageEnvironment& env,
@@ -419,8 +422,6 @@ class rs_net_device
 public:
     rs_net_device(rs2::software_device sw_device, std::string ip_address);
    ~rs_net_device() {};
-
-    rs2_intrinsics intrinsics;
 
 private:
     std::string  m_ip_address;
