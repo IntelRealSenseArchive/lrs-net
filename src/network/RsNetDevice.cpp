@@ -25,6 +25,7 @@
 #include <jpeg.h>
 
 #include <stdlib.h>
+#include <math.h>
 
 using namespace std::placeholders;
 
@@ -474,12 +475,182 @@ void rs_net_sensor::doDevice(uint64_t key) {
         // std::cout << "Chunks: " << chunks_allocated << "\n"; 
 
         // send it into device
+        uint8_t* frame_raw_converted = frame_raw;
         if (net_stream->profile.is<rs2::video_stream_profile>()) {
             rs2::video_stream_profile vsp = net_stream->profile.as<rs2::video_stream_profile>();
-            int bpp = (vsp.stream_type() == RS2_STREAM_INFRARED) ? 1 : 2; // IR:1 COLOR and DEPTH:2
+
+            // set bpp
+            int bpp = 1;
+            switch(vsp.format()) {
+            case RS2_FORMAT_Z16   : bpp = 2; break;
+            case RS2_FORMAT_YUYV  : bpp = 2; break;
+            case RS2_FORMAT_Y8    : bpp = 1; break;
+            case RS2_FORMAT_UYVY  : bpp = 2; break;
+            case RS2_FORMAT_RGB8  : bpp = 3; break;
+            case RS2_FORMAT_BGR8  : bpp = 3; break;
+            case RS2_FORMAT_RGBA8 : bpp = 4; break;
+            case RS2_FORMAT_BGRA8 : bpp = 4; break;
+            default: bpp = 0;
+            }
+
+            // convert the format if necessary
+            switch(vsp.format()) {
+            case RS2_FORMAT_RGB8  :
+            case RS2_FORMAT_BGR8  :
+                frame_raw_converted = new uint8_t[vsp.width() * vsp.height() * bpp];
+                // perform the conversion
+                for (int y = 0; y < vsp.height(); y++) {
+                    for (int x = 0; x < vsp.width(); x += 2) {                
+                        {
+                            uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 0];
+                            uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
+                            uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
+
+                            uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
+                            uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
+                            uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
+
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 0] = R;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 1] = G;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 2] = B;
+                        }
+
+                        {
+                            uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 2];
+                            uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
+                            uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
+
+                            uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
+                            uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
+                            uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
+
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 3] = R;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 4] = G;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 5] = B;
+                        }                        
+                    }
+                }
+                delete [] frame_raw;
+                break;
+            // case RS2_FORMAT_BGR8  :
+            //     frame_raw_converted = new uint8_t[vsp.width() * vsp.height() * bpp];
+            //     // perform the conversion
+            //     for (int y = 0; y < vsp.height(); y++) {
+            //         for (int x = 0; x < vsp.width(); x += 2) {                
+            //             {
+            //                 uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 0];
+            //                 uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
+            //                 uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
+
+            //                 uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
+            //                 uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
+            //                 uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
+
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 0] = B;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 1] = G;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 2] = R;
+            //             }
+
+            //             {
+            //                 uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 2];
+            //                 uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
+            //                 uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
+
+            //                 uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
+            //                 uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
+            //                 uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
+
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 3] = B;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 4] = G;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 5] = R;
+            //             }                        
+            //         }
+            //     }
+            //     delete [] frame_raw;
+            //     break;
+            case RS2_FORMAT_RGBA8 :
+            case RS2_FORMAT_BGRA8 :
+                frame_raw_converted = new uint8_t[vsp.width() * vsp.height() * bpp];
+                // perform the conversion
+                for (int y = 0; y < vsp.height(); y++) {
+                    for (int x = 0; x < vsp.width(); x += 2) {                
+                        {
+                            uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 0];
+                            uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
+                            uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
+
+                            uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
+                            uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
+                            uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
+
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 0] = R;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 1] = G;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 2] = B;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 3] = 0xFF;
+                        }
+
+                        {
+                            uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 2];
+                            uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
+                            uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
+
+                            uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
+                            uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
+                            uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
+
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 4] = R;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 5] = G;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 6] = B;
+                            frame_raw_converted[y * vsp.width() * bpp + x * bpp + 7] = 0xFF;
+                        }                        
+                    }
+                }
+                delete [] frame_raw;
+                break;
+            // case RS2_FORMAT_BGRA8 :
+            //     frame_raw_converted = new uint8_t[vsp.width() * vsp.height() * bpp];
+            //     // perform the conversion
+            //     for (int y = 0; y < vsp.height(); y++) {
+            //         for (int x = 0; x < vsp.width(); x += 2) {                
+            //             {
+            //                 uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 0];
+            //                 uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
+            //                 uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
+
+            //                 uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
+            //                 uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
+            //                 uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
+
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 0] = B;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 1] = G;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 2] = R;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 3] = 0xFF;
+            //             }
+
+            //             {
+            //                 uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 2];
+            //                 uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
+            //                 uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
+
+            //                 uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
+            //                 uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
+            //                 uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
+
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 4] = B;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 5] = G;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 6] = R;
+            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 7] = 0xFF;
+            //             }                        
+            //         }
+            //     }
+            //     delete [] frame_raw;
+            //     break;
+            }
+
+            // send the frame
             m_sw_sensor->on_video_frame(
                 { 
-                    (void*)frame_raw, 
+                    (void*)frame_raw_converted, 
                     [] (void* f) { delete [] (uint8_t*)f; }, 
                     vsp.width() * bpp,
                     bpp,                                                  
@@ -493,7 +664,7 @@ void rs_net_sensor::doDevice(uint64_t key) {
             rs2::motion_stream_profile msp = net_stream->profile.as<rs2::motion_stream_profile>();
             m_sw_sensor->on_motion_frame(
                 { 
-                    (void*)frame_raw, 
+                    (void*)frame_raw_converted, 
                     [] (void* f) { delete [] (uint8_t*)f; }, 
                     (double)time(NULL), 
                     RS2_TIMESTAMP_DOMAIN_SYSTEM_TIME, 
@@ -898,10 +1069,15 @@ void RSRTSPClient::playSession() {
         rs2::stream_profile profile = (*m_streams_it)->second->profile;
         uint64_t profile_key = slib::profile2key(profile);
 
+        // check for fake formats for color streams
+        if (profile.stream_type() == RS2_STREAM_COLOR) {
+            profile_key = slib::profile2key(profile, RS2_FORMAT_YUYV);
+        }
+
         bool profile_found = false;
         MediaSubsessionIterator it(*m_session);
 
-        std::cout << "Looking  for " << profile_key << "\t" << slib::print_profile(profile) << std::endl;
+        std::cout << "Looking  for " << slib::profile2key(profile) << "\t" << slib::print_profile(profile) << " => " << profile_key << std::endl;
         while (m_subsession = it.next()) {
             uint64_t subsession_key = std::stoull(m_subsession->attrVal_str("key"));
             rs2_video_stream vs = slib::key2stream(subsession_key);

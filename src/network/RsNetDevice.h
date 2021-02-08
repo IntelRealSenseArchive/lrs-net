@@ -168,7 +168,7 @@ public:
         return ss.str();
     };
 
-    static uint64_t profile2key(rs2::stream_profile profile) {
+    static uint64_t profile2key(rs2::stream_profile profile, rs2_format format = RS2_FORMAT_ANY) {
         convert_t t;
         t.key = 0;
 
@@ -176,8 +176,12 @@ public:
         t.values.type   = profile.stream_type();  
         t.values.index  = profile.stream_index(); 
         t.values.uid    = profile.unique_id();    
-        t.values.fps    = profile.fps();          
-        t.values.format = profile.format();
+        t.values.fps    = profile.fps();
+        if (format == RS2_FORMAT_ANY) {
+            t.values.format = profile.format();
+        } else {
+            t.values.format = format;
+        }
 
         if (profile.is<rs2::video_stream_profile>()) {
             rs2::video_stream_profile vsp = profile.as<rs2::video_stream_profile>();
@@ -307,6 +311,22 @@ public:
         case RS2_STREAM_FISHEYE  :
             vstream.intrinsics = intrinsics;
             m_sw_sensor->add_video_stream(vstream, slib::is_default(key));
+
+            // in case of the color stream add four additional formats
+            // we are going to convert them on host from YUYV
+            if (vstream.type == RS2_STREAM_COLOR) {
+                vstream.fmt = RS2_FORMAT_RGB8;
+                m_sw_sensor->add_video_stream(vstream, slib::is_default(key));
+
+                vstream.fmt = RS2_FORMAT_BGR8;
+                m_sw_sensor->add_video_stream(vstream, slib::is_default(key));
+
+                vstream.fmt = RS2_FORMAT_RGBA8;
+                m_sw_sensor->add_video_stream(vstream, slib::is_default(key));
+
+                vstream.fmt = RS2_FORMAT_BGRA8;
+                m_sw_sensor->add_video_stream(vstream, slib::is_default(key));
+            }
             break;
         case RS2_STREAM_GYRO     :
         case RS2_STREAM_ACCEL    :
