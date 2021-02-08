@@ -29,37 +29,77 @@ void server::doHTTP() {
 
     httplib::Server svr;
 
+    // Return version info
     svr.Get("/version", [&](const httplib::Request &, httplib::Response &res) {
-        std::string version;
-        version += "LRS-Net version: ";
-        version += std::to_string(RS2_NET_MAJOR_VERSION) + ".";
-        version += std::to_string(RS2_NET_MINOR_VERSION) + ".";
-        version += std::to_string(RS2_NET_PATCH_VERSION) + "\r\n";
-        res.set_content(version, "text/plain");
+        std::stringstream version;
+        version << "LRS-Net version: ";
+        version << (uint32_t)(RS2_NET_MAJOR_VERSION) << ".";
+        version << (uint32_t)(RS2_NET_MINOR_VERSION) << ".";
+        version << (uint32_t)(RS2_NET_PATCH_VERSION) << "\r\n";
+        res.set_content(version.str(), "text/plain");
     });
 
+    // Return device info
+    svr.Get("/devinfo", [&](const httplib::Request &, httplib::Response &res) {
+        std::stringstream devinfo;
+        for (int32_t i = 0; i < static_cast<int>(RS2_CAMERA_INFO_COUNT); i++) {
+            rs2_camera_info info_type = static_cast<rs2_camera_info>(i);
+            devinfo << i << "|" << info_type << "|";
+            if (m_dev.supports(info_type)) {
+                devinfo << m_dev.get_info(info_type);
+            } else {
+                devinfo << "n/a";
+            }
+            devinfo << "\r\n";
+        }
+        res.set_content(devinfo.str(), "text/plain");
+    });
+
+    // Return sensors their intrinsics and sensors
     svr.Get("/query", [&](const httplib::Request &, httplib::Response &res) {
         res.set_content(m_sensors_desc, "text/plain");
     });
 
-    svr.Get("/devinfo", [&](const httplib::Request &, httplib::Response &res) {
-        res.set_content(m_devinfo, "text/plain");
-    });
-
-    // get extrinsics
+    // Return extrinsics
     svr.Get("/extrinsics", [&](const httplib::Request &, httplib::Response &res) {
-        res.set_content(m_extrinsics, "text/plain");
+        res.set_content(m_extrinsics.str(), "text/plain");
     });
 
-    // get options
+    // Options 
+    std::mutex options_mutex;    
+
+    // Return options
     svr.Get("/options", [&](const httplib::Request &, httplib::Response &res) {
-        m_options_mutex.lock();
-        updateOptions();
-        res.set_content(m_sensors_opts, "text/plain");
-        m_options_mutex.unlock();
+        std::stringstream options;
+
+        options_mutex.lock();
+        for (rs2::sensor sensor : m_dev.query_sensors()) {
+            std::string sensor_name(sensor.supports(RS2_CAMERA_INFO_NAME) ? sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
+            // Prepare options list
+            options << sensor_name;
+            for (int32_t i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++) {
+                rs2_option option_type = static_cast<rs2_option>(i);
+                options << "|" << std::to_string(i) << ","; // option index
+                if (sensor.supports(option_type)) {
+                    // Get the current value of the option
+                    float current_value = sensor.get_option(option_type);
+                    options << current_value << ",";
+                    struct rs2::option_range current_range = sensor.get_option_range(option_type);
+                    options << current_range.min << ",";
+                    options << current_range.max << ",";
+                    options << current_range.def << ",";
+                    options << current_range.step;
+                } else {
+                    options << "n/a";
+                }
+            }
+            options << "\r\n";
+        }
+        res.set_content(options.str(), "text/plain");
+        options_mutex.unlock();
     });
 
-    // set options
+    // Set options
     svr.Post("/options",
         [&](const httplib::Request &req, httplib::Response &res, const httplib::ContentReader &content_reader) {
             if (req.is_multipart_form_data()) {
@@ -72,7 +112,8 @@ void server::doHTTP() {
                 });
                 res.set_content(options, "text/plain");
 
-                // std::cout << "Got options to set: " << options << std::endl;
+                // Parse the request, it is in form
+                // <sensor_name>|<opt1_index>,[<opt1_value>|n/a]|...|<optN_index>,[<optN_value>|n/a]
                 while (!options.empty()) {
                     // get the sensor line
                     uint32_t line_pos = options.find("\r\n");
@@ -94,29 +135,34 @@ void server::doHTTP() {
                         }
                     }
 
-                    while (!sensor.empty()) {
-                        pos = sensor.find(",");
-                        uint32_t idx = std::stoul(sensor.substr(0, pos).c_str());
-                        sensor.erase(0, pos + 1);
-                        pos = sensor.find("|");
-                        std::string vals = sensor.substr(0, pos + 1);
-                        sensor.erase(0, pos + 1);
-                        if (std::strcmp(vals.c_str(), "n/a|") != 0) {
-                            pos = vals.find("|");
-                            float val = std::stof(vals.substr(0, pos).c_str());
+                    // locate the option and update is changed
+                    if (s != sensors.end()) {
+                        while (!sensor.empty()) {
+                            pos = sensor.find(",");
+                            uint32_t idx = std::stoul(sensor.substr(0, pos).c_str());
+                            sensor.erase(0, pos + 1);
+                            pos = sensor.find("|");
+                            std::string vals = sensor.substr(0, pos + 1);
+                            sensor.erase(0, pos + 1);
+                            if (std::strcmp(vals.c_str(), "n/a|") != 0) {
+                                pos = vals.find("|");
+                                float val = std::stof(vals.substr(0, pos).c_str());
 
-                            m_options_mutex.lock();
-                            if (s->supports((rs2_option)idx))
-                            if (s->get_option((rs2_option)idx) != val) {
-                                std::cout << "Setting option " << idx << " to " << val << std::endl;
-                                try {
-                                    s->set_option((rs2_option)idx, val);
-                                } catch(const rs2::error& e) {
-                                    std::cout << "Failed to set option " << idx << ". (" << e.what() << ")" << std::endl;
+                                options_mutex.lock();
+                                if (s->supports((rs2_option)idx))
+                                if (s->get_option((rs2_option)idx) != val) {
+                                    // std::cout << "Setting option " << idx << " to " << val << std::endl;
+                                    try {
+                                        s->set_option((rs2_option)idx, val);
+                                    } catch(const rs2::error& e) {
+                                        std::cout << "Failed to set option " << idx << ". (" << e.what() << ")" << std::endl;
+                                    }
                                 }
+                                options_mutex.unlock();
                             }
-                            m_options_mutex.unlock();
                         }
+                    } else {
+                        std::cout << "Unknown sensor specified: " << sensor_name << std::endl;
                     }
                 }
             }
@@ -126,79 +172,15 @@ void server::doHTTP() {
     svr.listen("0.0.0.0", 8080);
 }
 
-void server::updateOptions() {
-        m_sensors_opts.clear();
-        for (rs2::sensor sensor : m_dev.query_sensors()) {
-            std::string sensor_name(sensor.supports(RS2_CAMERA_INFO_NAME) ? sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
-
-            // Prepare options list
-            m_sensors_opts += sensor_name;
-            for (int i = 0; i < static_cast<int>(RS2_OPTION_COUNT); i++) {
-                m_sensors_opts += "|";
-
-                rs2_option option_type = static_cast<rs2_option>(i);
-
-                m_sensors_opts += std::to_string(i); // option index
-                m_sensors_opts += ",";
-
-                if (sensor.supports(option_type)) {
-                    // Get the current value of the option
-                    float current_value = sensor.get_option(option_type);
-                    m_sensors_opts += std::to_string(current_value);
-                    m_sensors_opts += ",";
-
-                    struct rs2::option_range current_range = sensor.get_option_range(option_type);
-                    m_sensors_opts += std::to_string(current_range.min);
-                    m_sensors_opts += ",";
-                    m_sensors_opts += std::to_string(current_range.max);
-                    m_sensors_opts += ",";
-                    m_sensors_opts += std::to_string(current_range.def);
-                    m_sensors_opts += ",";
-                    m_sensors_opts += std::to_string(current_range.step);
-                } else {
-                    m_sensors_opts += "n/a";
-                }
-            }
-            m_sensors_opts += "\r\n";
-        }
-}
-
-void server::doOptions() {
-    std::cout << "Options synchronization thread started." << std::endl;
-    while (1) {
-        m_options_mutex.lock();
-        updateOptions();
-        m_options_mutex.unlock();
-        std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
-    }
-}
-
 server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
 {
-    // Prepare device info
-    for (int i = 0; i < static_cast<int>(RS2_CAMERA_INFO_COUNT); i++) {
-        rs2_camera_info info_type = static_cast<rs2_camera_info>(i);
-        m_devinfo += std::to_string(i);
-        m_devinfo += "|";
-        m_devinfo += rs2_camera_info_to_string(info_type);
-        m_devinfo += "|";
-        
-        if (dev.supports(info_type))
-            m_devinfo += dev.get_info(info_type);
-        else
-            m_devinfo += "n/a";
-
-        m_devinfo += "\r\n";
-    }
-
     ReceivingInterfaceAddr = inet_addr(addr.c_str());
 
     // Begin by setting up our usage environment:
     scheduler = BasicTaskScheduler::createNew();
     env = BasicUsageEnvironment::createNew(*scheduler);
 
-    // srv = RTSPServer::createNew(*env, 8554, NULL);
-    srv = RsRTSPServer::createNew(*env, 8554);
+    srv = RTSPServer::createNew(*env, 8554, NULL);
     if (srv == NULL) {
         std::cout << "Failed to create RTSP server: " << env->getResultMsg() << std::endl;
         exit(1);
@@ -232,6 +214,7 @@ server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
                 profile.format() == RS2_FORMAT_Y8   ||
                 profile.format() == RS2_FORMAT_MOTION_XYZ32F) 
             {
+                // Count unique streams and save one profile of each kind to calculate extrinsics later
                 unique_streams[StreamIndex(profile.stream_type(), profile.stream_index())] = profile;
 
                 sms->addSubsession(RsServerMediaSubsession::createNew(*env, pfq, profile));
@@ -267,55 +250,41 @@ server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
 
     // Prepare extrinsics
     for (auto from_stream : unique_streams) {
-        std::string from_name = rs2_stream_to_string(from_stream.first.first);
+        std::stringstream from_name;
+        from_name << from_stream.first.first;
         if (from_stream.first.second) {
-            from_name += " ";
-            from_name += std::to_string(from_stream.first.second);
+            from_name << " " << from_stream.first.second;
         }
         auto from_profile = from_stream.second;
-
         for (auto to_stream : unique_streams) {
-            std::string to_name = rs2_stream_to_string(to_stream.first.first);
+            std::stringstream to_name;
+            to_name << to_stream.first.first;
             if (to_stream.first.second) {
-                to_name += " ";
-                to_name += std::to_string(to_stream.first.second);
+                to_name << " " << to_stream.first.second;
             }
             auto to_profile = to_stream.second;
 
-            m_extrinsics += from_name;
-            m_extrinsics += "|";
-            m_extrinsics += to_name;
-            m_extrinsics += "|";
-
-            m_extrinsics += std::to_string(slib::profile2key(from_profile));
-            m_extrinsics += "|";
-            m_extrinsics += std::to_string(slib::profile2key(to_profile));
+            m_extrinsics << from_name.str() << "|" << to_name.str() << "|";
+            m_extrinsics << slib::profile2key(from_profile) << "|" << slib::profile2key(to_profile);
 
             try {
                 // Given two streams, use the get_extrinsics_to() function to get the transformation from the stream to the other stream
                 rs2_extrinsics extrinsics = from_profile.get_extrinsics_to(to_profile);
                 // std::cout << "From " << from_name << " to " << to_name << std::endl;
                 for (int t = 0; t < 3; t++) {
-                    m_extrinsics += "|";
-                    m_extrinsics += std::to_string(extrinsics.translation[t]);
+                    m_extrinsics << "|" << extrinsics.translation[t];
                 }
                 for (int r = 0; r < 9; r++) {
-                    m_extrinsics += "|";
-                    m_extrinsics += std::to_string(extrinsics.rotation[r]);
+                    m_extrinsics << "|" << extrinsics.rotation[r];
                 }
-                // std::cout << "Translation Vector : [" << extrinsics.translation[0] << "," << extrinsics.translation[1] << "," << extrinsics.translation[2] << "]\n";
-                // std::cout << "Rotation Matrix    : [" << extrinsics.rotation[0] << "," << extrinsics.rotation[3] << "," << extrinsics.rotation[6] << "]\n";
-                // std::cout << "                   : [" << extrinsics.rotation[1] << "," << extrinsics.rotation[4] << "," << extrinsics.rotation[7] << "]\n";
-                // std::cout << "                   : [" << extrinsics.rotation[2] << "," << extrinsics.rotation[5] << "," << extrinsics.rotation[8] << "]" << std::endl;
             } catch (const std::exception& e) {
-                std::cerr << "Failed to get extrinsics for the streams (" << from_name << " => " << to_name << "): " << e.what() << std::endl;
+                std::cerr << "Failed to get extrinsics for the streams (" << from_name.str() << " => " << to_name.str() << "): " << e.what() << std::endl;
             }
 
-            m_extrinsics += "\r\n";
+            m_extrinsics << "\r\n";
         }
     }
 
-    // m_options = std::thread( [this](){ doOptions(); } ); 
     m_httpd = std::thread( [this](){ doHTTP(); } ); 
 }
 

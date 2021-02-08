@@ -29,11 +29,8 @@ rs2_device* rs2_create_net_device(int api_version, const char* address, rs2_erro
     // set client destruction functioun
     sw_dev.set_destruction_callback([ip_dev] { delete ip_dev; });
     // register device info to sw device
-    // DeviceData data = ip_dev->remote_sensors[0]->rtsp_client->getDeviceData();
     sw_dev.update_info(RS2_CAMERA_INFO_NAME, "Network Device");
-    // sw_dev.register_info(rs2_camera_info::RS2_CAMERA_INFO_IP_ADDRESS, addr);
-    // sw_dev.register_info(rs2_camera_info::RS2_CAMERA_INFO_SERIAL_NUMBER, /* data.serialNum */ "555555555555");
-    // sw_dev.register_info(rs2_camera_info::RS2_CAMERA_INFO_USB_TYPE_DESCRIPTOR, data.usbType);
+    sw_dev.register_info(rs2_camera_info::RS2_CAMERA_INFO_IP_ADDRESS, addr);
 
     return sw_dev.get().get();
 }

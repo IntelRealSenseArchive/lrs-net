@@ -8,8 +8,6 @@
 void RsVideoRTPSink::doSpecialFrameHandling(unsigned fragmentationOffset, unsigned char* frameStart, 
                                              unsigned numBytesInFrame, struct timeval framePresentationTime, unsigned numRemainingBytes)
 {
-    // std::cout << "doSpecialFrameHandling processing packet for frame " << (void*)frameStart << " with size of " << numBytesInFrame << " offset " << fragmentationOffset << " and " << numRemainingBytes << " bytes reminding" << std::endl;
-
     if (fragmentationOffset == 0) {
         fFrameNum++;
     }
