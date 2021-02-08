@@ -532,42 +532,6 @@ void rs_net_sensor::doDevice(uint64_t key) {
                 }
                 delete [] frame_raw;
                 break;
-            // case RS2_FORMAT_BGR8  :
-            //     frame_raw_converted = new uint8_t[vsp.width() * vsp.height() * bpp];
-            //     // perform the conversion
-            //     for (int y = 0; y < vsp.height(); y++) {
-            //         for (int x = 0; x < vsp.width(); x += 2) {                
-            //             {
-            //                 uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 0];
-            //                 uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
-            //                 uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
-
-            //                 uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
-            //                 uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
-            //                 uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
-
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 0] = B;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 1] = G;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 2] = R;
-            //             }
-
-            //             {
-            //                 uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 2];
-            //                 uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
-            //                 uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
-
-            //                 uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
-            //                 uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
-            //                 uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
-
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 3] = B;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 4] = G;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 5] = R;
-            //             }                        
-            //         }
-            //     }
-            //     delete [] frame_raw;
-            //     break;
             case RS2_FORMAT_RGBA8 :
             case RS2_FORMAT_BGRA8 :
                 frame_raw_converted = new uint8_t[vsp.width() * vsp.height() * bpp];
@@ -607,44 +571,6 @@ void rs_net_sensor::doDevice(uint64_t key) {
                 }
                 delete [] frame_raw;
                 break;
-            // case RS2_FORMAT_BGRA8 :
-            //     frame_raw_converted = new uint8_t[vsp.width() * vsp.height() * bpp];
-            //     // perform the conversion
-            //     for (int y = 0; y < vsp.height(); y++) {
-            //         for (int x = 0; x < vsp.width(); x += 2) {                
-            //             {
-            //                 uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 0];
-            //                 uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
-            //                 uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
-
-            //                 uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
-            //                 uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
-            //                 uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
-
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 0] = B;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 1] = G;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 2] = R;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 3] = 0xFF;
-            //             }
-
-            //             {
-            //                 uint8_t Y = frame_raw[y * vsp.width() * 2 + x * 2 + 2];
-            //                 uint8_t U = frame_raw[y * vsp.width() * 2 + x * 2 + 1];
-            //                 uint8_t V = frame_raw[y * vsp.width() * 2 + x * 2 + 3];
-
-            //                 uint8_t R = fmax(0, fmin(255, Y + 1.402 * (V - 128)));
-            //                 uint8_t G = fmax(0, fmin(255, Y - 0.344 * (U - 128) - 0.714 * (V - 128)));
-            //                 uint8_t B = fmax(0, fmin(255, Y + 1.772 * (U - 128)));
-
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 4] = B;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 5] = G;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 6] = R;
-            //                 frame_raw_converted[y * vsp.width() * bpp + x * bpp + 7] = 0xFF;
-            //             }                        
-            //         }
-            //     }
-            //     delete [] frame_raw;
-            //     break;
             }
 
             // send the frame
@@ -701,6 +627,24 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
 
     // Obtain device information via HTTP and set it for the software device. 
     httplib::Client client(m_ip_address, 8080);
+    auto ver = client.Get("/version");
+    if (ver->status == 200) {
+        // parse the response in form:
+        // <LRS-Net version: X.Y.Z>
+
+        std::string version;
+        version += "LRS-Net version: ";
+        version += std::to_string(RS2_NET_MAJOR_VERSION) + ".";
+        version += std::to_string(RS2_NET_MINOR_VERSION) + ".";
+        version += std::to_string(RS2_NET_PATCH_VERSION) + "\r\n";
+
+        std::string server_version = ver->body;
+
+        if (std::strcmp(version.c_str(), server_version.c_str())) {
+            throw std::runtime_error("Version mismatch.");
+        }
+    }
+
     auto inf = client.Get("/devinfo");
     if (inf->status == 200) {
         // parse the response in form:
@@ -871,9 +815,20 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
         }
     }
 
-    std::map<StreamPair, rs2_extrinsics> extrinsics_map;
+    std::cout << "Software device is ready" << std::endl;
+
+    m_options = std::thread( [this](){ doOptions(); } ); 
+
+    for (auto netsensor : sensors) netsensor->start();
+
+    m_extrinsics = std::thread( [this](){ doExtrinsics(); } ); 
+}
+
+void rs_net_device::doExtrinsics() {
+    std::cout << "Extrinsics initialization thread started" << std::endl;
 
     // Prepare extrinsics map
+    httplib::Client client(m_ip_address, 8080);
     auto ext = client.Get("/extrinsics");
     if (ext->status == 200) {
         // parse the response in form:
@@ -925,7 +880,7 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
             }
 
             // set the extrinsincs
-            extrinsics_map[StreamPair(StreamIndex(from_stream.type, from_stream.index), StreamIndex(to_stream.type, to_stream.index))] = extr;
+            m_extrinsics_map[StreamPair(StreamIndex(from_stream.type, from_stream.index), StreamIndex(to_stream.type, to_stream.index))] = extr;
         }
     }
 
@@ -938,21 +893,17 @@ rs_net_device::rs_net_device(rs2::software_device sw_device, std::string ip_addr
     for (auto from_profile : profiles) {
         for (auto to_profile : profiles) {
             from_profile.register_extrinsics_to(to_profile, 
-                extrinsics_map[StreamPair(StreamIndex(from_profile.stream_type(), from_profile.stream_index()), StreamIndex(to_profile.stream_type(), to_profile.stream_index()))]);
+                m_extrinsics_map[StreamPair(StreamIndex(from_profile.stream_type(), from_profile.stream_index()), StreamIndex(to_profile.stream_type(), to_profile.stream_index()))]);
         }
     }
 
-    std::cout << "Software device is ready" << std::endl;
-
-    m_options = std::thread( [this](){ doOptions(); } ); 
-
-    for (auto netsensor : sensors) netsensor->start();
+    std::cout << "Extrinsics initialization thread exited" << std::endl;
 }
 
 void rs_net_device::doOptions() {
     std::cout << "Options synchronization thread started" << std::endl;
 
-    httplib::Client client(m_ip_address, 8080);
+    std::string options_prev;
     std::string options;
 
     while (1) {
@@ -979,9 +930,13 @@ void rs_net_device::doOptions() {
             options += "\r\n";
         }
 
-        client.Post("/options", options.c_str(), "text/plain");
+        if (std::strcmp(options.c_str(), options_prev.c_str())) {
+            httplib::Client client(m_ip_address, 8080);
+            client.Post("/options", options.c_str(), "text/plain");
+            options_prev = options;
+        }
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000)); 
+        std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
     }
 
     std::cout << "Options synchronization thread exited" << std::endl;

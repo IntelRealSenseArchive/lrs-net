@@ -21,6 +21,10 @@
 
 #include <lz4.h>
 
+#define RS2_NET_MAJOR_VERSION    1
+#define RS2_NET_MINOR_VERSION    0
+#define RS2_NET_PATCH_VERSION    0
+
 // forward
 class rs_net_device; 
 class RSRTSPClient;
@@ -453,4 +457,8 @@ private:
 
     void doOptions();
     std::thread m_options;
+
+    std::map<StreamPair, rs2_extrinsics> m_extrinsics_map;
+    void doExtrinsics();
+    std::thread m_extrinsics;
 };

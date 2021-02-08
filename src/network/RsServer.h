@@ -203,6 +203,7 @@ private:
 
     std::thread m_options;
     void doOptions();
+    void updateOptions();
     std::mutex  m_options_mutex;    
 
     std::string m_devinfo;      // device information

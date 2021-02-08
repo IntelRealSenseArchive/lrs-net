@@ -29,6 +29,15 @@ void server::doHTTP() {
 
     httplib::Server svr;
 
+    svr.Get("/version", [&](const httplib::Request &, httplib::Response &res) {
+        std::string version;
+        version += "LRS-Net version: ";
+        version += std::to_string(RS2_NET_MAJOR_VERSION) + ".";
+        version += std::to_string(RS2_NET_MINOR_VERSION) + ".";
+        version += std::to_string(RS2_NET_PATCH_VERSION) + "\r\n";
+        res.set_content(version, "text/plain");
+    });
+
     svr.Get("/query", [&](const httplib::Request &, httplib::Response &res) {
         res.set_content(m_sensors_desc, "text/plain");
     });
@@ -45,6 +54,7 @@ void server::doHTTP() {
     // get options
     svr.Get("/options", [&](const httplib::Request &, httplib::Response &res) {
         m_options_mutex.lock();
+        updateOptions();
         res.set_content(m_sensors_opts, "text/plain");
         m_options_mutex.unlock();
     });
@@ -116,10 +126,7 @@ void server::doHTTP() {
     svr.listen("0.0.0.0", 8080);
 }
 
-void server::doOptions() {
-    std::cout << "Options synchronization thread started." << std::endl;
-    while (1) {
-        m_options_mutex.lock();
+void server::updateOptions() {
         m_sensors_opts.clear();
         for (rs2::sensor sensor : m_dev.query_sensors()) {
             std::string sensor_name(sensor.supports(RS2_CAMERA_INFO_NAME) ? sensor.get_info(RS2_CAMERA_INFO_NAME) : "Unknown");
@@ -154,6 +161,13 @@ void server::doOptions() {
             }
             m_sensors_opts += "\r\n";
         }
+}
+
+void server::doOptions() {
+    std::cout << "Options synchronization thread started." << std::endl;
+    while (1) {
+        m_options_mutex.lock();
+        updateOptions();
         m_options_mutex.unlock();
         std::this_thread::sleep_for(std::chrono::milliseconds(100)); 
     }
@@ -301,7 +315,7 @@ server::server(rs2::device dev, std::string addr, int port) : m_dev(dev)
         }
     }
 
-    m_options = std::thread( [this](){ doOptions(); } ); 
+    // m_options = std::thread( [this](){ doOptions(); } ); 
     m_httpd = std::thread( [this](){ doHTTP(); } ); 
 }
 
