@@ -23,10 +23,6 @@ endif()
 
 set(DEPENDENCIES ${DEPENDENCIES} ${CC_LIBS})
 
-if(BUILD_NETWORK_DEVICE)
-    add_subdirectory(server)
-endif()
-
 add_subdirectory(hello-realsense)
 add_subdirectory(software-device)
 add_subdirectory(capture)

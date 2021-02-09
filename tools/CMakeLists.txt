@@ -39,3 +39,7 @@ else()
     #    set(DEPENDENCIES realsense2)
     endif()
 endif()
+
+if(BUILD_NETWORK_DEVICE)
+    add_subdirectory(rs-server)
+endif()
