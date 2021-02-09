@@ -15,10 +15,20 @@ add_definitions(-D_WINSOCKAPI_ -DNEWLOCALE_NOT_USED=1 -DBSD=1 -DSOCKLEN_T=sockle
 #target_compile_definitions(${PROJECT_NAME} PUBLIC RESPONSE_BUFFER_SIZE=100000)
 
 set(RS_CLIENT_NET_CPP
-    ./RsNetDevice.cpp
     ./RsNetDevice.h
+    ./RsNetDevice.cpp
+    ./RsNetSensor.h
+    ./RsNetSensor.cpp
+    ./RsNetStream.h
+    ./RsNetStream.cpp
+    ./RsRTSPClient.h
+    ./RsRTSPClient.cpp
     ./RsVideoRTPSource.h
     ./RsVideoRTPSource.cpp
+    ./RsMediaSession.h
+    ./RsMediaSession.cpp
+    ./RsSink.h
+    ./RsSink.cpp
 )
 
 set(RS_COMP_NET_CPP
@@ -26,14 +36,20 @@ set(RS_COMP_NET_CPP
     ${LZ4_DIR}/lz4.c
 )
 
-set(RS_JPEG_NET_CPP
+set(RS_COMMON_NET_CPP
     ./jpeg.h
     ./jpeg.cpp
+    ./RsStreamLib.h
+    ./RsStreamLib.cpp
+    ./RsNetCommon.h
+    ./RsNetCommon.cpp
+    ./RsSafeQueue.h
+    ./RsSafeQueue.cpp
 )
 
 set(RS_SERVER_NET_CPP
-    ./RsServer.cpp
     ./RsServer.h
+    ./RsServer.cpp
     ./RsServerMediaSubsession.h
     ./RsSensor.h
     ./RsSource.h
@@ -44,7 +60,7 @@ set(RS_SERVER_NET_CPP
 set(REALSENSE_NET_CPP 
     ${RS_CLIENT_NET_CPP} 
     ${RS_COMP_NET_CPP} 
-    ${RS_JPEG_NET_CPP} 
+    ${RS_COMMON_NET_CPP} 
     ${RS_SERVER_NET_CPP}
     rs_net.cpp
 )

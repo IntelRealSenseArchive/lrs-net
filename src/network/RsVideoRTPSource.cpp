@@ -3,8 +3,6 @@
 
 #include "RsVideoRTPSource.h"
 
-#include <iostream>
-
 RsVideoRTPSource* RsVideoRTPSource::createNew(UsageEnvironment& env, Groupsock* RTPgs, unsigned char rtpPayloadFormat, unsigned rtpTimestampFrequency, char const* sampling)
 {
     return new RsVideoRTPSource(env, RTPgs, rtpPayloadFormat, rtpTimestampFrequency, sampling);
