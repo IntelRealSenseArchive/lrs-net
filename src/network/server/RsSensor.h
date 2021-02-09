@@ -3,7 +3,8 @@
 
 #pragma once
 
-#include "RsNetDevice.h"
+#include "RsNetCommon.h"
+#include "RsStreamLib.h"
 
 #include <iostream>
 #include <iomanip>

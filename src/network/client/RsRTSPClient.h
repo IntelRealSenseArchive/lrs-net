@@ -17,11 +17,6 @@
 #include "RsNetStream.h"
 #include "RsMediaSession.h"
 
-#include <zstd.h>
-#include <zstd_errors.h>
-
-#include <lz4.h>
-
 class RSRTSPClient : public RTSPClient {
 public:
     static RSRTSPClient* createNew(UsageEnvironment& env, char const* rtspURL) {

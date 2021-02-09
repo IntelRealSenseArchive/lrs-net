@@ -19,12 +19,6 @@
 #include <thread>
 #include <functional>
 
-#include <zstd.h>
-#include <zstd_errors.h>
-
-#include <lz4.h>
-#include <jpeg.h>
-
 #include <stdlib.h>
 #include <math.h>
 
@@ -303,17 +297,20 @@ void rs_net_device::doExtrinsics() {
                 extrinsics.erase(0, pos + 1);
             }
 
-            // set the extrinsincs
+            // update the extrinsincs map
             m_extrinsics_map[StreamPair(StreamIndex(from_stream.type, from_stream.index), StreamIndex(to_stream.type, to_stream.index))] = extr;
         }
     }
 
+    // gather the list of all profiles
     std::vector<rs2::stream_profile> profiles;
     for (rs2::sensor sensor : m_device.query_sensors()) {
         auto sprofiles = sensor.get_stream_profiles(); 
         profiles.insert(profiles.end(), sprofiles.begin(), sprofiles.end());
     }
 
+    // update the extrinsics for all profiles
+    // WARNING: takes a long time
     for (auto from_profile : profiles) {
         for (auto to_profile : profiles) {
             from_profile.register_extrinsics_to(to_profile, 
@@ -328,10 +325,9 @@ void rs_net_device::doOptions() {
     std::cout << "Options synchronization thread started" << std::endl;
 
     std::string options_prev;
-    std::string options;
 
     while (1) {
-        options.clear();
+        std::string options;
         for (auto netsensor : sensors) {
             options += netsensor->get_name();
 

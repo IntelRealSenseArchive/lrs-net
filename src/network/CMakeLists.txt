@@ -3,7 +3,7 @@
 #  minimum required cmake version: 3.1.0
 cmake_minimum_required(VERSION 3.1.0)
 
-project(realsense2-net VERSION 1.0.0 LANGUAGES CXX C)
+project(realsense2-net VERSION 2.0.0 LANGUAGES CXX C)
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
@@ -20,7 +20,6 @@ set(RS_CLIENT_NET_CPP
     ./client/RsNetSensor.h
     ./client/RsNetSensor.cpp
     ./client/RsNetStream.h
-    ./client/RsNetStream.cpp
     ./client/RsRTSPClient.h
     ./client/RsRTSPClient.cpp
     ./client/RsVideoRTPSource.h
@@ -40,11 +39,8 @@ set(RS_COMMON_NET_CPP
     ./common/jpeg.h
     ./common/jpeg.cpp
     ./common/RsStreamLib.h
-    ./common/RsStreamLib.cpp
     ./common/RsNetCommon.h
-    ./common/RsNetCommon.cpp
     ./common/RsSafeQueue.h
-    ./common/RsSafeQueue.cpp
 )
 
 set(RS_SERVER_NET_CPP
@@ -102,7 +98,7 @@ include_directories(${PROJECT_NAME}
     ${CMAKE_SOURCE_DIR}/src/network/client
     ${CMAKE_SOURCE_DIR}/src/network/server
     ${CMAKE_SOURCE_DIR}/src/network/common
-    # ${CMAKE_SOURCE_DIR}/common
+
     ${CMAKE_SOURCE_DIR}/third-party/cpp-httplib
     # ${CMAKE_SOURCE_DIR}/third-party/easyloggingpp/src
     ${CMAKE_SOURCE_DIR}/third-party/tclap/include

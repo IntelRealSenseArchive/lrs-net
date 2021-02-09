@@ -6,22 +6,10 @@
 #include "liveMedia.hh"
 #include "BasicUsageEnvironment.hh"
 
-#include <option.h>
-#include <software-device.h>
 #include <librealsense2/hpp/rs_internal.hpp>
 #include <librealsense2/rs.hpp>
 
-#include <list>
-#include <sstream>
-
-#include "RsVideoRTPSource.h"
-
-#include <zstd.h>
-#include <zstd_errors.h>
-
-#include <lz4.h>
-
-#define RS2_NET_MAJOR_VERSION    1
+#define RS2_NET_MAJOR_VERSION    2
 #define RS2_NET_MINOR_VERSION    0
 #define RS2_NET_PATCH_VERSION    0
 
@@ -40,4 +28,7 @@ typedef struct chunk_header{
 } chunk_header_t;
 #pragma pack(pop)
 #define CHUNK_HLEN (sizeof(chunk_header_t))
+
+using StreamIndex     = std::pair<rs2_stream, int>;
+using StreamPair      = std::pair<StreamIndex, StreamIndex>;
 

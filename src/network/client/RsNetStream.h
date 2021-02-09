@@ -16,9 +16,6 @@
 
 #include "RsSafeQueue.h"
 
-using StreamIndex     = std::pair<rs2_stream, int>;
-using StreamPair      = std::pair<StreamIndex, StreamIndex>;
-
 class rs_net_stream {
 public:
     rs_net_stream(rs2::stream_profile sp) : profile(sp) {

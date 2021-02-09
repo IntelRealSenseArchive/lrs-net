@@ -18,11 +18,6 @@
 #include "RsNetSensor.h"
 #include "RsNetStream.h"
 
-#include <zstd.h>
-#include <zstd_errors.h>
-
-#include <lz4.h>
-
 class rs_net_device
 {
 public:

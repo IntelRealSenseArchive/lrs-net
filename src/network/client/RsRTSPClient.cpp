@@ -19,15 +19,6 @@
 #include <RsRTSPClient.h>
 #include <RsSink.h>
 
-#include <zstd.h>
-#include <zstd_errors.h>
-
-#include <lz4.h>
-#include <jpeg.h>
-
-#include <stdlib.h>
-#include <math.h>
-
 using namespace std::placeholders;
 
 void RSRTSPClient::shutdownStream() {
