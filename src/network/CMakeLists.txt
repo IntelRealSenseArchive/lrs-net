@@ -15,20 +15,20 @@ add_definitions(-D_WINSOCKAPI_ -DNEWLOCALE_NOT_USED=1 -DBSD=1 -DSOCKLEN_T=sockle
 #target_compile_definitions(${PROJECT_NAME} PUBLIC RESPONSE_BUFFER_SIZE=100000)
 
 set(RS_CLIENT_NET_CPP
-    ./RsNetDevice.h
-    ./RsNetDevice.cpp
-    ./RsNetSensor.h
-    ./RsNetSensor.cpp
-    ./RsNetStream.h
-    ./RsNetStream.cpp
-    ./RsRTSPClient.h
-    ./RsRTSPClient.cpp
-    ./RsVideoRTPSource.h
-    ./RsVideoRTPSource.cpp
-    ./RsMediaSession.h
-    ./RsMediaSession.cpp
-    ./RsSink.h
-    ./RsSink.cpp
+    ./client/RsNetDevice.h
+    ./client/RsNetDevice.cpp
+    ./client/RsNetSensor.h
+    ./client/RsNetSensor.cpp
+    ./client/RsNetStream.h
+    ./client/RsNetStream.cpp
+    ./client/RsRTSPClient.h
+    ./client/RsRTSPClient.cpp
+    ./client/RsVideoRTPSource.h
+    ./client/RsVideoRTPSource.cpp
+    ./client/RsMediaSession.h
+    ./client/RsMediaSession.cpp
+    ./client/RsSink.h
+    ./client/RsSink.cpp
 )
 
 set(RS_COMP_NET_CPP
@@ -37,24 +37,24 @@ set(RS_COMP_NET_CPP
 )
 
 set(RS_COMMON_NET_CPP
-    ./jpeg.h
-    ./jpeg.cpp
-    ./RsStreamLib.h
-    ./RsStreamLib.cpp
-    ./RsNetCommon.h
-    ./RsNetCommon.cpp
-    ./RsSafeQueue.h
-    ./RsSafeQueue.cpp
+    ./common/jpeg.h
+    ./common/jpeg.cpp
+    ./common/RsStreamLib.h
+    ./common/RsStreamLib.cpp
+    ./common/RsNetCommon.h
+    ./common/RsNetCommon.cpp
+    ./common/RsSafeQueue.h
+    ./common/RsSafeQueue.cpp
 )
 
 set(RS_SERVER_NET_CPP
-    ./RsServer.h
-    ./RsServer.cpp
-    ./RsServerMediaSubsession.h
-    ./RsSensor.h
-    ./RsSource.h
-    ./RsVideoRTPSink.h
-    ./RsVideoRTPSink.cpp
+    ./server/RsServer.h
+    ./server/RsServer.cpp
+    ./server/RsServerMediaSubsession.h
+    ./server/RsSensor.h
+    ./server/RsSource.h
+    ./server/RsVideoRTPSink.h
+    ./server/RsVideoRTPSink.cpp
 )
 
 set(REALSENSE_NET_CPP 
@@ -98,7 +98,11 @@ include_directories(${PROJECT_NAME}
     ./
 
     ${CMAKE_SOURCE_DIR}/src
-    ${CMAKE_SOURCE_DIR}/common
+    ${CMAKE_SOURCE_DIR}/src/network
+    ${CMAKE_SOURCE_DIR}/src/network/client
+    ${CMAKE_SOURCE_DIR}/src/network/server
+    ${CMAKE_SOURCE_DIR}/src/network/common
+    # ${CMAKE_SOURCE_DIR}/common
     ${CMAKE_SOURCE_DIR}/third-party/cpp-httplib
     # ${CMAKE_SOURCE_DIR}/third-party/easyloggingpp/src
     ${CMAKE_SOURCE_DIR}/third-party/tclap/include
